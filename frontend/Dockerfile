@@ -1,23 +1,23 @@
-FROM python:3.13-slim
+FROM public.ecr.aws/docker/library/python:3.13-slim
 
 WORKDIR /app
 
-# Instalar dependências com versões específicas
+# Install dependencies with specific versions
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Criar diretórios necessários
+# Create required directories
 RUN mkdir -p templates static
 
-# Copiar código da aplicação e templates
+# Copy application code and templates
 COPY app.py .
 COPY templates/ ./templates/
 
-# Expor porta para o tráfego web
+# Expose port for web traffic
 EXPOSE 80
 
-# Configuração para logging
+# Unbuffered logging
 ENV PYTHONUNBUFFERED=1
 
-# Comando para executar a aplicação
+# Run the application
 CMD ["python", "app.py"]

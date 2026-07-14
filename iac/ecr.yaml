@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Repositórios ECR para as imagens backend e frontend do demo de feature toggle.
+  ECR repositories for the feature toggle demo backend and frontend images.
 
 Resources:
   BackendRepository:
@@ -9,6 +9,9 @@ Resources:
       RepositoryName: backend
       ImageScanningConfiguration:
         ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: IMMUTABLE
 
   FrontendRepository:
     Type: AWS::ECR::Repository
@@ -16,6 +19,9 @@ Resources:
       RepositoryName: frontend
       ImageScanningConfiguration:
         ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: IMMUTABLE
 
 Outputs:
   BackendRepositoryUri:

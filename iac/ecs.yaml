@@ -128,8 +128,18 @@ Resources:
       Matcher:
         HttpCode: "200"
 
+  # NOTE: This demo uses HTTP for simplicity. In production, configure an
+  # ACM certificate and use HTTPS (port 443) with an HTTP-to-HTTPS redirect.
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [EA022]
+      checkov:
+        skip:
+          - id: CKV_AWS_2
+            comment: Demo uses HTTP. Production should use HTTPS with ACM certificate.
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80

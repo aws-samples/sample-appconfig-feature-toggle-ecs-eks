@@ -1,44 +1,56 @@
-# Feature Toggles em ECS e EKS com AWS AppConfig (sidecar pattern)
+# Feature Toggles in Container Environments with AWS AppConfig
 
-Código de referência do blog **"Implementing Feature Toggles in Container Environments with AWS AppConfig"**
-(texto completo em [`AWS_AppConfig_Feature_Toggle_Blog.md`](AWS_AppConfig_Feature_Toggle_Blog.md)).
+Companion code for the AWS Containers Blog post: **"Implementing Feature Toggles in Container Environments with AWS AppConfig"**.
 
-Demonstra uma feature flag de **desconto promocional** controlada dinamicamente via
-AWS AppConfig — sem rebuild ou redeploy dos containers — usando o **AppConfig Agent
-como sidecar** em Amazon EKS e Amazon ECS (Fargate).
+## Why This Repository?
 
-## Arquitetura
+Containers are immutable by design — changing application behavior means rebuilding and redeploying images. Feature toggles solve this by decoupling configuration from deployment, enabling:
 
-![Arquitetura](Arquitetura.png)
+- **Instant feature rollouts** without container redeployments
+- **Gradual rollouts** with automatic rollback on errors
+- **A/B testing and experimentation** controlled via configuration
+- **Kill switches** for production incidents
 
-- **frontend** (Flask, porta 80) — renderiza o catálogo de produtos e destaca a promoção quando a flag está ativa.
-- **backend** (Flask, porta 5000) — lê os produtos do DynamoDB e aplica o desconto quando a flag está ativa.
-- **appconfig-agent** (sidecar, porta 2772) — cada pod/task expõe a configuração em `http://localhost:2772`; as apps só fazem um GET HTTP local.
-- **AWS AppConfig** — guarda a feature flag `discount_enabled` (`enabled`, `discount_percentage`).
-- **DynamoDB** — tabela `Products` com o catálogo.
+This repository demonstrates the **AWS AppConfig Agent sidecar pattern** — a language-agnostic approach where a companion container handles all configuration complexity (caching, polling, retry, graceful degradation) and exposes feature flags via a simple `localhost` HTTP endpoint. Your application only makes a local GET request — no AWS SDK required in your code.
 
-## Estrutura do repositório
+## Architecture
+
+![Architecture Diagram](Arquitetura.png)
+
+| Component | Description |
+|-----------|-------------|
+| **Frontend** (Flask, port 80) | Renders the product catalog and highlights the promotion when the flag is active |
+| **Backend** (Flask, port 5000) | Reads products from DynamoDB and applies the discount when the flag is active |
+| **AppConfig Agent** (sidecar, port 2772) | Each pod/task exposes configuration at `http://localhost:2772`; apps make a local HTTP GET |
+| **AWS AppConfig** | Stores the feature flag `discount_enabled` (`enabled`, `discount_percentage`) |
+| **DynamoDB** | `Products` table with the product catalog |
+
+## Repository Structure
 
 ```
-backend/            App Flask + Dockerfile (API de produtos)
-frontend/           App Flask + Dockerfile + templates (catálogo)
-eks/                Manifests Kubernetes (namespace, SA/IRSA, deployments com sidecar, services)
-ecs/                Task definitions Fargate (backend e frontend, cada uma com o sidecar)
-iac/template.yaml   CloudFormation: AppConfig + validator + deployment strategy + DynamoDB + IAM
-scripts/            seed_products.py — popula o DynamoDB com dados de exemplo
+backend/            Flask app + Dockerfile (product API)
+frontend/           Flask app + Dockerfile + templates (product catalog UI + admin portal)
+eks/                Kubernetes manifests (namespace, ServiceAccount/IRSA, deployments with sidecar, services)
+ecs/                Fargate task definitions (backend and frontend, each with the sidecar)
+iac/
+  template.yaml     CloudFormation: AppConfig + validator + deployment strategies + DynamoDB + IAM
+  ecs.yaml          CloudFormation: ECS cluster, ALB, Service Connect, services
+  ecr.yaml          CloudFormation: ECR repositories
+scripts/            seed_products.py — populates DynamoDB with sample data
 ```
 
-## Pré-requisitos
+## Prerequisites
 
-- AWS CLI configurado (`aws configure`), região padrão `us-west-2`.
-- Docker, e para EKS: `kubectl` + um cluster com o [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/).
-- Python 3.13 (apenas para rodar o script de seed localmente).
+- AWS CLI configured (`aws configure`), default region `us-west-2`
+- Docker (on Mac/ARM, builds use `--platform linux/amd64` for Fargate compatibility)
+- For EKS: `kubectl` + a cluster with the [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/)
+- Python 3.13 (only for running the seed script locally)
 
-> Região padrão em todos os arquivos: **us-west-2**. Ajuste se necessário.
+> Default region in all files: **us-west-2**. Adjust if needed.
 
 ---
 
-## Passo 1 — Provisionar a infraestrutura (AppConfig + DynamoDB + IAM)
+## Step 1 — Provision Infrastructure (AppConfig + DynamoDB + IAM)
 
 ```bash
 aws cloudformation deploy \
@@ -47,13 +59,13 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-west-2
 
-# Anote os outputs (IDs de AppConfig, ARN da role, nome da tabela)
+# Note the outputs (AppConfig IDs, role ARN, table name)
 aws cloudformation describe-stacks \
   --stack-name appconfig-feature-toggle \
   --query "Stacks[0].Outputs" --output table --region us-west-2
 ```
 
-Para habilitar **IRSA no EKS**, passe o OIDC provider do seu cluster:
+For **IRSA on EKS**, pass your cluster's OIDC provider:
 
 ```bash
 aws cloudformation deploy --template-file iac/template.yaml \
@@ -63,7 +75,7 @@ aws cloudformation deploy --template-file iac/template.yaml \
       EksOidcProviderUrl=oidc.eks.us-west-2.amazonaws.com/id/<ID>
 ```
 
-## Passo 2 — Popular o DynamoDB
+## Step 2 — Seed DynamoDB
 
 ```bash
 pip install boto3
@@ -71,10 +83,9 @@ export AWS_DEFAULT_REGION=us-west-2
 python scripts/seed_products.py Products
 ```
 
-## Passo 3 — Build e push das imagens para o ECR
+## Step 3 — Build and Push Images to ECR
 
-Crie os repositórios via IaC e faça o push. **Em Mac/ARM use `--platform linux/amd64`**
-(Fargate roda amd64; sem isso a task falha com "exec format error"):
+Create the repositories and push. **On Mac/ARM use `--platform linux/amd64`** (Fargate runs amd64; without this the task fails with "exec format error"):
 
 ```bash
 aws cloudformation deploy --template-file iac/ecr.yaml \
@@ -91,10 +102,9 @@ for svc in backend frontend; do
 done
 ```
 
-## Passo 4a — Deploy no EKS
+## Step 4a — Deploy on EKS
 
-Substitua os placeholders `<ACCOUNT_ID>` nos manifests (imagem ECR e ARN da role IRSA
-em [`eks/01-serviceaccount.yaml`](eks/01-serviceaccount.yaml)), depois:
+Replace the `<ACCOUNT_ID>` placeholders in the manifests (ECR image URI and IRSA role ARN in [`eks/01-serviceaccount.yaml`](eks/01-serviceaccount.yaml)), then:
 
 ```bash
 kubectl apply -f eks/00-namespace.yaml
@@ -104,26 +114,23 @@ kubectl apply -f eks/11-backend-service.yaml
 kubectl apply -f eks/20-frontend-deployment.yaml
 kubectl apply -f eks/21-frontend-service.yaml
 
-# URL pública do frontend
+# Frontend public URL
 kubectl get svc frontend-service -n backend \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-## Passo 4b — Deploy no ECS (Fargate) — recomendado
+## Step 4b — Deploy on ECS (Fargate) — Recommended
 
-A stack [`iac/ecs.yaml`](iac/ecs.yaml) cria tudo: cluster, ALB público, security
-groups, Service Connect (o frontend acha o backend via `http://backend:5000`),
-task definitions com o sidecar e os dois services. Passe os outputs da foundation
-stack e as subnets públicas da sua VPC:
+The [`iac/ecs.yaml`](iac/ecs.yaml) stack creates everything: cluster, public ALB, security groups, Service Connect (frontend reaches backend via `http://backend:5000`), task definitions with the sidecar, and both services. Pass the outputs from the foundation stack and your VPC's public subnets:
 
 ```bash
 REGION=us-west-2
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REG=$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
 
-# IDs vindos dos outputs da foundation stack (Passo 1)
+# IDs from the foundation stack outputs (Step 1)
 APP_ID=...; ENV_ID=...; CONFIG_ID=...
-SUBNETS="subnet-aaaa,subnet-bbbb,subnet-cccc"   # subnets públicas da VPC
+SUBNETS="subnet-aaaa,subnet-bbbb,subnet-cccc"   # public subnets
 VPC_ID=vpc-xxxx
 
 aws cloudformation deploy --template-file iac/ecs.yaml \
@@ -135,64 +142,66 @@ aws cloudformation deploy --template-file iac/ecs.yaml \
       TaskRoleArn=arn:aws:iam::${ACCOUNT_ID}:role/appconfig-feature-toggle-AppConfigAgentRole \
       ProductsTableName=Products AwsRegion=$REGION
 
-# URL pública do frontend
+# Frontend public URL
 aws cloudformation describe-stacks --stack-name appconfig-demo-ecs --region $REGION \
   --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text
 ```
 
-> Os JSONs em [`ecs/`](ecs/) permanecem como referência standalone da task
-> definition (útil para quem quer registrar manualmente ou entender o formato);
-> o `iac/ecs.yaml` é o caminho automatizado.
+## Step 5 — Toggle the Feature Flag
 
-## Passo 5 — Alternar a feature flag
+Two ways to enable/disable the promotion. In both cases, the sidecars propagate the change within seconds and the catalog displays discounted prices — **no container redeployment required**.
 
-Há duas formas de ligar/desligar a promoção. Em ambas os sidecars propagam a
-mudança em segundos e o catálogo passa a exibir os preços com desconto — **sem
-redeploy de containers**.
+**A) Built-in admin portal (`/admin`)** — recommended for demos:
+Open `http://<ALB-DNS>/admin`, check *Promotion active*, set the percentage, and click **Apply**. Under the hood, the frontend calls the AppConfig API (control plane) via boto3, creating a new hosted version and triggering an instant deployment (0 min bake).
 
-**A) Portal de admin embutido (`/admin`)** — recomendado para o demo:
-abra `http://<ALB-DNS>/admin`, marque *Promotion active*, defina o percentual e
-clique em **Apply**. Por baixo, o frontend chama a API do AppConfig (control plane)
-via boto3, criando uma nova hosted version e disparando um deployment com a
-estratégia instantânea (`MyPythonApp-instant`, 0 min de bake). A task role já tem
-as permissões de escrita necessárias (ver `iac/template.yaml`).
+**B) AWS AppConfig console** — the native ops tool (also described in the blog): edit the `discount_enabled` flag and deploy using the `MyPythonApp-gradual-15min` strategy (gradual rollout with automatic rollback).
 
-**B) Console do AWS AppConfig** — a ferramenta de ops nativa (também descrita no
-blog): edite a flag `discount_enabled` e faça um deployment usando a strategy
-`MyPythonApp-gradual-15min` (rollout gradual com rollback automático).
+## Configuration Reference
 
-> A estratégia pré-definida `AppConfig.AllAtOnce` impõe **10 min de bake time**,
-> o que bloqueia toggles em sequência; por isso o portal usa a estratégia
-> instantânea criada pela stack.
+| Variable | Service | Description |
+|----------|---------|-------------|
+| `APPCONFIG_APP_ID` | backend, frontend | AppConfig Application name/ID |
+| `APPCONFIG_ENV_ID` | backend, frontend | Environment name/ID |
+| `APPCONFIG_CONFIG_ID` | backend, frontend | Configuration Profile name/ID |
+| `AWS_DEFAULT_REGION` | backend, frontend | AWS region |
+| `DYNAMODB_TABLE_NAME` | backend | Products table name (default `Products`) |
+| `BACKEND_URL` | frontend | Backend base URL |
+| `APPCONFIG_DEPLOY_STRATEGY_ID` | frontend | Deployment strategy for `/admin` portal |
+| `APPCONFIG_AGENT_BASE_URL` | backend | Agent endpoint (default `http://localhost:2772`) |
+| `FLASK_SECRET_KEY` | frontend | Flask session secret (auto-generated if not set) |
 
-Endpoints úteis:
-- `GET /` (frontend) — catálogo.
-- `GET|POST /admin` (frontend) — portal para alternar a flag.
-- `GET /debug` (frontend) — inspeção de config/flag.
-- `GET /api/status` e `GET /api/products` (backend).
+## Useful Endpoints
 
-## Configuração via variáveis de ambiente
+| Endpoint | Service | Description |
+|----------|---------|-------------|
+| `GET /` | frontend | Product catalog |
+| `GET/POST /admin` | frontend | Admin portal to toggle the flag |
+| `GET /debug` | frontend | Configuration/flag inspection |
+| `GET /api/status` | backend | Service health + flag status |
+| `GET /api/products` | backend | Product list with discount applied |
 
-| Variável | Serviço | Descrição |
-|---|---|---|
-| `APPCONFIG_APP_ID` | backend, frontend | Nome/ID da AppConfig Application |
-| `APPCONFIG_ENV_ID` | backend, frontend | Nome/ID do Environment |
-| `APPCONFIG_CONFIG_ID` | backend, frontend | Nome/ID do Configuration Profile |
-| `AWS_DEFAULT_REGION` | backend, frontend | Região AWS |
-| `DYNAMODB_TABLE_NAME` | backend | Nome da tabela de produtos (default `Products`) |
-| `BACKEND_URL` | frontend | URL base do backend |
-| `APPCONFIG_DEPLOY_STRATEGY_ID` | frontend | Estratégia usada pelo portal `/admin` (default `AppConfig.AllAtOnce`; use a instantânea) |
-| `APPCONFIG_AGENT_BASE_URL` | backend | Endpoint do agent (default `http://localhost:2772`) |
+## Security Notes
 
-## Limpeza
+- **No hardcoded credentials** — all configuration via environment variables
+- **IAM least privilege** — roles scoped to specific AppConfig application and DynamoDB table
+- **ECR images** — Dockerfiles use `public.ecr.aws` base images (not Docker Hub)
+- **DynamoDB encryption** — SSE enabled with AWS-managed keys
+- **ECR scanning** — `ScanOnPush: true` on all repositories
+- **Demo HTTP listener** — The ALB uses HTTP for simplicity. In production, add an ACM certificate and configure HTTPS
+
+## Cleanup
 
 ```bash
 kubectl delete -f eks/ 2>/dev/null || true
 aws cloudformation delete-stack --stack-name appconfig-demo-ecs        --region us-west-2
 aws cloudformation wait stack-delete-complete --stack-name appconfig-demo-ecs --region us-west-2
-# esvaziar os repos ECR antes de apagar a stack (ECR não deleta com imagens dentro)
+# Empty ECR repos before deleting the stack (ECR won't delete with images inside)
 aws ecr batch-delete-image --repository-name backend  --image-ids imageTag=latest --region us-west-2 2>/dev/null || true
 aws ecr batch-delete-image --repository-name frontend --image-ids imageTag=latest --region us-west-2 2>/dev/null || true
 aws cloudformation delete-stack --stack-name appconfig-demo-ecr        --region us-west-2
 aws cloudformation delete-stack --stack-name appconfig-feature-toggle  --region us-west-2
 ```
+
+## License
+
+This sample code is made available under the MIT-0 license. See the LICENSE file.
