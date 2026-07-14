@@ -57,9 +57,20 @@
 
         .hero {
             padding: 48px 0 28px;
+            display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap;
         }
         .hero h1 { font-size: 2.1rem; font-weight: 800; letter-spacing: -.03em; margin: 0 0 8px; }
         .hero p { color: var(--text-muted); font-size: 1.02rem; margin: 0; }
+        .refresh-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--surface); color: var(--brand); border: 1px solid var(--border);
+            padding: 10px 18px; border-radius: 10px; font: inherit; font-weight: 600; font-size: .9rem;
+            cursor: pointer; box-shadow: var(--shadow); transition: all .15s;
+        }
+        .refresh-btn:hover { background: #eef2ff; border-color: #c7d2fe; transform: translateY(-1px); }
+        .refresh-btn:active { transform: translateY(0); }
+        .refresh-btn svg { width: 16px; height: 16px; transition: transform .5s; }
+        .refresh-btn:hover svg { transform: rotate(180deg); }
 
         .promo-banner {
             display: flex; align-items: center; gap: 14px;
@@ -157,8 +168,17 @@
 
     <div class="container">
         <div class="hero">
-            <h1>Product Catalog</h1>
-            <p>Browse our selection — pricing updates in real time via AWS AppConfig feature flags.</p>
+            <div>
+                <h1>Product Catalog</h1>
+                <p>Browse our selection — pricing updates in real time via AWS AppConfig feature flags.</p>
+            </div>
+            <button class="refresh-btn" onclick="window.location.reload()" title="Reload the catalog">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 4v6h-6M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                </svg>
+                Refresh
+            </button>
         </div>
 
         {% if promo %}
@@ -188,11 +208,11 @@
                     </span>
                     <div class="price-row">
                         {% if product.discounted_price is defined %}
-                            <span class="price now">\${{ "%.2f"|format(product.discounted_price) }}</span>
-                            <span class="price was">\${{ "%.2f"|format(product.original_price) }}</span>
+                            <span class="price now">${{ "%.2f"|format(product.discounted_price) }}</span>
+                            <span class="price was">${{ "%.2f"|format(product.original_price) }}</span>
                             <span class="save-pill">-{{ product.discount_applied }}</span>
                         {% else %}
-                            <span class="price">\${{ "%.2f"|format(product.price) }}</span>
+                            <span class="price">${{ "%.2f"|format(product.price) }}</span>
                         {% endif %}
                     </div>
                 </div>
