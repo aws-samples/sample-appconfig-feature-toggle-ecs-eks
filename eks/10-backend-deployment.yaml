@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: backend
+  labels:
+    app: backend
+spec:
+  # Múltiplas réplicas demonstram a consistência da configuração entre instâncias.
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+      annotations:
+        # Habilita o scraping das métricas do AppConfig Agent pelo Prometheus.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2772"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: appconfig-service-account
+      terminationGracePeriodSeconds: 60
+      containers:
+      # --- Container da aplicação ---
+      - name: backend
+        image: <ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/backend:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APPCONFIG_APP_ID
+          value: "MyPythonApp"
+        - name: APPCONFIG_ENV_ID
+          value: "Production"
+        - name: APPCONFIG_CONFIG_ID
+          value: "FeatureFlags"
+        - name: AWS_DEFAULT_REGION
+          value: "us-west-2"
+        - name: DYNAMODB_TABLE_NAME
+          value: "Products"
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+      # --- Sidecar do AppConfig Agent ---
+      - name: appconfig-agent
+        image: public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x
+        ports:
+        - name: http
+          containerPort: 2772
+          protocol: TCP
+        env:
+        - name: SERVICE_REGION
+          value: us-west-2
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 2772
+          initialDelaySeconds: 15
+          periodSeconds: 20

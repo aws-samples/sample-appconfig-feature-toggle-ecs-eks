@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  AWS AppConfig feature toggle demo — cria a Application, Environment,
+  Configuration Profile (feature flags) com validator JSON Schema, a versão
+  inicial da flag, uma deployment strategy gradual, a tabela DynamoDB de
+  produtos e a IAM role usada pelo AppConfig Agent (IRSA no EKS / task role no ECS).
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: MyPythonApp
+    Description: Nome da AppConfig Application (usado como APPCONFIG_APP_ID).
+  EnvironmentName:
+    Type: String
+    Default: Production
+    Description: Nome do AppConfig Environment (usado como APPCONFIG_ENV_ID).
+  ConfigProfileName:
+    Type: String
+    Default: FeatureFlags
+    Description: Nome do Configuration Profile (usado como APPCONFIG_CONFIG_ID).
+  ProductsTableName:
+    Type: String
+    Default: Products
+    Description: Nome da tabela DynamoDB de produtos.
+  EksOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: >
+      (Opcional) ARN do OIDC provider do cluster EKS para habilitar IRSA.
+      Deixe vazio se for usar apenas ECS. Ex.:
+      arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABC123
+  EksOidcProviderUrl:
+    Type: String
+    Default: ""
+    Description: >
+      (Opcional) URL do OIDC provider, sem https://. Ex.:
+      oidc.eks.us-west-2.amazonaws.com/id/ABC123
+  ServiceAccountNamespace:
+    Type: String
+    Default: backend
+  ServiceAccountName:
+    Type: String
+    Default: appconfig-service-account
+
+Conditions:
+  HasEksOidc: !Not [!Equals [!Ref EksOidcProviderArn, ""]]
+
+Resources:
+  # ---------- AWS AppConfig ----------
+  AppConfigApplication:
+    Type: AWS::AppConfig::Application
+    Properties:
+      Name: !Ref ApplicationName
+      Description: Feature toggle demo application
+
+  AppConfigEnvironment:
+    Type: AWS::AppConfig::Environment
+    Properties:
+      ApplicationId: !Ref AppConfigApplication
+      Name: !Ref EnvironmentName
+      Description: Production environment
+
+  AppConfigConfigProfile:
+    Type: AWS::AppConfig::ConfigurationProfile
+    Properties:
+      ApplicationId: !Ref AppConfigApplication
+      Name: !Ref ConfigProfileName
+      # feature flags são armazenadas no AppConfig hosted store
+      LocationUri: hosted
+      Type: AWS.AppConfig.FeatureFlags
+      Validators:
+        - Type: JSON_SCHEMA
+          Content: |
+            {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {
+                "flags": {
+                  "type": "object",
+                  "properties": {
+                    "discount_enabled": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "attributes": {
+                          "type": "object",
+                          "properties": {
+                            "discount_percentage": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+  # Versão inicial da configuração de feature flags (discount desabilitado, 15%)
+  AppConfigHostedVersion:
+    Type: AWS::AppConfig::HostedConfigurationVersion
+    Properties:
+      ApplicationId: !Ref AppConfigApplication
+      ConfigurationProfileId: !Ref AppConfigConfigProfile
+      ContentType: application/json
+      Content: |
+        {
+          "flags": {
+            "discount_enabled": {
+              "name": "discount_enabled",
+              "attributes": {
+                "discount_percentage": {
+                  "constraints": { "type": "number", "minimum": 0, "maximum": 100 }
+                }
+              }
+            }
+          },
+          "values": {
+            "discount_enabled": {
+              "enabled": false,
+              "discount_percentage": 15
+            }
+          },
+          "version": "1"
+        }
+
+  # Deployment gradual (linear, 15 minutos) com bake time para rollback automático
+  AppConfigDeploymentStrategy:
+    Type: AWS::AppConfig::DeploymentStrategy
+    Properties:
+      Name: !Sub "${ApplicationName}-gradual-15min"
+      Description: Rollout linear em 15 minutos com 5 min de bake time
+      DeploymentDurationInMinutes: 15
+      FinalBakeTimeInMinutes: 5
+      GrowthFactor: 20
+      GrowthType: LINEAR
+      ReplicateTo: NONE
+
+  # ---------- DynamoDB ----------
+  ProductsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProductsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # ---------- IAM role para o AppConfig Agent ----------
+  # Reutilizável tanto como task role no ECS quanto como role IRSA no EKS.
+  AppConfigAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-AppConfigAgentRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Confiança para ECS tasks
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+          # Confiança para IRSA (EKS) — só é adicionada se o OIDC provider for informado
+          - !If
+            - HasEksOidc
+            - Effect: Allow
+              Principal:
+                Federated: !Ref EksOidcProviderArn
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  !Sub "${EksOidcProviderUrl}:sub": !Sub "system:serviceaccount:${ServiceAccountNamespace}:${ServiceAccountName}"
+                  !Sub "${EksOidcProviderUrl}:aud": "sts.amazonaws.com"
+            - !Ref AWS::NoValue
+      Policies:
+        - PolicyName: AppConfigAgentAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appconfig:StartConfigurationSession
+                  - appconfig:GetLatestConfiguration
+                Resource: "*"
+        - PolicyName: DynamoDbReadProducts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource: !GetAtt ProductsTable.Arn
+
+Outputs:
+  ApplicationId:
+    Description: APPCONFIG_APP_ID
+    Value: !Ref AppConfigApplication
+  EnvironmentId:
+    Description: APPCONFIG_ENV_ID
+    Value: !Ref AppConfigEnvironment
+  ConfigurationProfileId:
+    Description: APPCONFIG_CONFIG_ID
+    Value: !Ref AppConfigConfigProfile
+  DeploymentStrategyId:
+    Description: ID da deployment strategy gradual
+    Value: !Ref AppConfigDeploymentStrategy
+  AppConfigAgentRoleArn:
+    Description: ARN da role para IRSA (EKS) / task role (ECS)
+    Value: !GetAtt AppConfigAgentRole.Arn
+  ProductsTableName:
+    Description: Nome da tabela DynamoDB
+    Value: !Ref ProductsTable

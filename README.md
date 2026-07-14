@@ -1,93 +1,147 @@
-# AppConfigECSandEKS
+# Feature Toggles em ECS e EKS com AWS AppConfig (sidecar pattern)
 
+Código de referência do blog **"Implementing Feature Toggles in Container Environments with AWS AppConfig"**
+(texto completo em [`AWS_AppConfig_Feature_Toggle_Blog.md`](AWS_AppConfig_Feature_Toggle_Blog.md)).
 
+Demonstra uma feature flag de **desconto promocional** controlada dinamicamente via
+AWS AppConfig — sem rebuild ou redeploy dos containers — usando o **AppConfig Agent
+como sidecar** em Amazon EKS e Amazon ECS (Fargate).
 
-## Getting started
+## Arquitetura
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+![Arquitetura](Arquitetura.png)
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- **frontend** (Flask, porta 80) — renderiza o catálogo de produtos e destaca a promoção quando a flag está ativa.
+- **backend** (Flask, porta 5000) — lê os produtos do DynamoDB e aplica o desconto quando a flag está ativa.
+- **appconfig-agent** (sidecar, porta 2772) — cada pod/task expõe a configuração em `http://localhost:2772`; as apps só fazem um GET HTTP local.
+- **AWS AppConfig** — guarda a feature flag `discount_enabled` (`enabled`, `discount_percentage`).
+- **DynamoDB** — tabela `Products` com o catálogo.
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Estrutura do repositório
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.aws.dev/daniabib/AppConfigECSandEKS.git
-git branch -M main
-git push -uf origin main
+backend/            App Flask + Dockerfile (API de produtos)
+frontend/           App Flask + Dockerfile + templates (catálogo)
+eks/                Manifests Kubernetes (namespace, SA/IRSA, deployments com sidecar, services)
+ecs/                Task definitions Fargate (backend e frontend, cada uma com o sidecar)
+iac/template.yaml   CloudFormation: AppConfig + validator + deployment strategy + DynamoDB + IAM
+scripts/            seed_products.py — popula o DynamoDB com dados de exemplo
 ```
 
-## Integrate with your tools
+## Pré-requisitos
 
-- [ ] [Set up project integrations](https://gitlab.aws.dev/daniabib/AppConfigECSandEKS/-/settings/integrations)
+- AWS CLI configurado (`aws configure`), região padrão `us-west-2`.
+- Docker, e para EKS: `kubectl` + um cluster com o [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/).
+- Python 3.13 (apenas para rodar o script de seed localmente).
 
-## Collaborate with your team
+> Região padrão em todos os arquivos: **us-west-2**. Ajuste se necessário.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+---
 
-## Test and Deploy
+## Passo 1 — Provisionar a infraestrutura (AppConfig + DynamoDB + IAM)
 
-Use the built-in continuous integration in GitLab.
+```bash
+aws cloudformation deploy \
+  --template-file iac/template.yaml \
+  --stack-name appconfig-feature-toggle \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-west-2
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+# Anote os outputs (IDs de AppConfig, ARN da role, nome da tabela)
+aws cloudformation describe-stacks \
+  --stack-name appconfig-feature-toggle \
+  --query "Stacks[0].Outputs" --output table --region us-west-2
+```
 
-***
+Para habilitar **IRSA no EKS**, passe o OIDC provider do seu cluster:
 
-# Editing this README
+```bash
+aws cloudformation deploy --template-file iac/template.yaml \
+  --stack-name appconfig-feature-toggle --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+      EksOidcProviderArn=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/<ID> \
+      EksOidcProviderUrl=oidc.eks.us-west-2.amazonaws.com/id/<ID>
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Passo 2 — Popular o DynamoDB
 
-## Suggestions for a good README
+```bash
+pip install boto3
+export AWS_DEFAULT_REGION=us-west-2
+python scripts/seed_products.py Products
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Passo 3 — Build e push das imagens para o ECR
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=us-west-2
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+for svc in backend frontend; do
+  aws ecr create-repository --repository-name $svc --region $REGION 2>/dev/null || true
+  docker build -t $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$svc:latest ./$svc
+  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$svc:latest
+done
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Passo 4a — Deploy no EKS
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Substitua os placeholders `<ACCOUNT_ID>` nos manifests (imagem ECR e ARN da role IRSA
+em [`eks/01-serviceaccount.yaml`](eks/01-serviceaccount.yaml)), depois:
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```bash
+kubectl apply -f eks/00-namespace.yaml
+kubectl apply -f eks/01-serviceaccount.yaml
+kubectl apply -f eks/10-backend-deployment.yaml
+kubectl apply -f eks/11-backend-service.yaml
+kubectl apply -f eks/20-frontend-deployment.yaml
+kubectl apply -f eks/21-frontend-service.yaml
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+# URL pública do frontend
+kubectl get svc frontend-service -n backend \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Passo 4b — Deploy no ECS (Fargate)
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+Substitua `<ACCOUNT_ID>` nos JSONs de [`ecs/`](ecs/) e registre as task definitions.
+O `BACKEND_URL` do frontend assume descoberta via **ECS Service Connect / Cloud Map**
+(`backend.demo.local`); ajuste conforme seu setup de rede.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+aws ecs register-task-definition --cli-input-json file://ecs/backend-taskdef.json  --region us-west-2
+aws ecs register-task-definition --cli-input-json file://ecs/frontend-taskdef.json --region us-west-2
+# Em seguida crie os ECS Services apontando para essas task definitions no seu cluster/VPC.
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## Passo 5 — Alternar a feature flag
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+No console do AWS AppConfig, edite a flag `discount_enabled` (defina `enabled = true`
+e `discount_percentage`) e faça um **deployment** usando a strategy
+`MyPythonApp-gradual-15min`. Em segundos os sidecars propagam a mudança e o catálogo
+passa a exibir os preços com desconto — **sem redeploy de containers**.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Endpoints úteis:
+- `GET /` (frontend) — catálogo.
+- `GET /debug` (frontend) — inspeção de config/flag.
+- `GET /api/status` e `GET /api/products` (backend).
 
-## License
-For open source projects, say how it is licensed.
+## Configuração via variáveis de ambiente
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Variável | Serviço | Descrição |
+|---|---|---|
+| `APPCONFIG_APP_ID` | backend, frontend | Nome/ID da AppConfig Application |
+| `APPCONFIG_ENV_ID` | backend, frontend | Nome/ID do Environment |
+| `APPCONFIG_CONFIG_ID` | backend, frontend | Nome/ID do Configuration Profile |
+| `AWS_DEFAULT_REGION` | backend, frontend | Região AWS |
+| `DYNAMODB_TABLE_NAME` | backend | Nome da tabela de produtos (default `Products`) |
+| `BACKEND_URL` | frontend | URL base do backend |
+| `APPCONFIG_AGENT_BASE_URL` | backend | Endpoint do agent (default `http://localhost:2772`) |
+
+## Limpeza
+
+```bash
+kubectl delete -f eks/ 2>/dev/null || true
+aws cloudformation delete-stack --stack-name appconfig-feature-toggle --region us-west-2
+```
