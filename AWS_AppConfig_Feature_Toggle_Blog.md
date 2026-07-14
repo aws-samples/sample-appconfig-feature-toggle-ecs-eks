@@ -129,6 +129,12 @@ Your application simply needs to make HTTP requests to the local endpoint to ret
 
 Let's walk through a practical example of implementing feature toggles using AWS AppConfig in containerized environments.
 
+> **Follow along with the code.** The complete sample application—frontend, backend, container definitions, Kubernetes manifests, ECS task definitions, and the infrastructure-as-code to provision the AWS AppConfig and supporting resources—is available on GitHub:
+>
+> **`https://github.com/<YOUR-GITHUB-ORG>/appconfig-feature-toggle-demo`** *(placeholder — replace with the public repository URL)*
+>
+> Clone the repository and use it as a reference while reading the sections below. The README walks through the end-to-end process: provisioning the AWS AppConfig resources, building and publishing the container images, deploying to ECS or EKS, and toggling the feature flag.
+
 ### Architecture Overview
 
 Our sample application consists of a frontend and backend service deployed in containers. The frontend displays a product catalog, and the backend provides product data via an API. We'll implement a feature toggle for a discount promotion that can be enabled or disabled without redeploying our containers.
@@ -567,7 +573,7 @@ As organizations continue to adopt containerized architectures and DevOps practi
 
 To get started with AWS AppConfig and feature toggles in containerized environments, check out these resources:
 
-AWS AppConfig Documentation provides comprehensive guidance on setting up and using AWS AppConfig for your applications. The AWS AppConfig Workshop offers hands-on exercises to help you learn through practical implementation. For those interested in the technical details of the AppConfig Agent, the AWS AppConfig Agent GitHub Repository contains the source code and detailed documentation. To deepen your understanding of feature flag implementation patterns, the Feature Flag Best Practices guide offers valuable insights from teams that have successfully implemented feature flags at scale.
+The complete sample application used in this post is available on GitHub at **`https://github.com/<YOUR-GITHUB-ORG>/appconfig-feature-toggle-demo`** *(placeholder — replace with the public repository URL)*, including the application code, container definitions, ECS and EKS deployment artifacts, and infrastructure-as-code. AWS AppConfig Documentation provides comprehensive guidance on setting up and using AWS AppConfig for your applications. The AWS AppConfig Workshop offers hands-on exercises to help you learn through practical implementation. For those interested in the technical details of the AppConfig Agent, the AWS AppConfig Agent GitHub Repository contains the source code and detailed documentation. To deepen your understanding of feature flag implementation patterns, the Feature Flag Best Practices guide offers valuable insights from teams that have successfully implemented feature flags at scale.
 
 ## About the Author
 
