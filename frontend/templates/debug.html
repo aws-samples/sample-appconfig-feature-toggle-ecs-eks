@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Debug Info - Loja Online</title>
+    <title>Debug Info - Online Store</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -54,34 +54,34 @@
     </style>
 </head>
 <body>
-    <h1>Página de Debug - Frontend</h1>
-    
+    <h1>Debug Page - Frontend</h1>
+
     <div class="section">
-        <h2>Configuração da Aplicação</h2>
+        <h2>Application Configuration</h2>
         <pre>{{ debug_info.app_config | tojson(indent=4) }}</pre>
     </div>
-    
+
     <div class="section">
         <h2>Feature Flag</h2>
         <p>Status: <span class="{% if debug_info.feature_flag.enabled %}success{% else %}error{% endif %}">
-            {% if debug_info.feature_flag.enabled %}Ativo{% else %}Inativo{% endif %}
+            {% if debug_info.feature_flag.enabled %}Active{% else %}Inactive{% endif %}
         </span></p>
-        <p>Porcentagem de desconto: {{ debug_info.feature_flag.discount_percentage }}%</p>
+        <p>Discount percentage: {{ debug_info.feature_flag.discount_percentage }}%</p>
         <pre>{{ debug_info.feature_flag | tojson(indent=4) }}</pre>
     </div>
-    
+
     <div class="section">
-        <h2>Status do Backend</h2>
+        <h2>Backend Status</h2>
         {% if debug_info.backend_status.error is defined %}
-            <p class="error">Erro ao conectar com o backend: {{ debug_info.backend_status.error }}</p>
+            <p class="error">Error connecting to the backend: {{ debug_info.backend_status.error }}</p>
         {% else %}
-            <p>Status do serviço: <span class="{% if debug_info.backend_status.status == 'operational' %}success{% else %}error{% endif %}">
+            <p>Service status: <span class="{% if debug_info.backend_status.status == 'operational' %}success{% else %}error{% endif %}">
                 {{ debug_info.backend_status.status }}
             </span></p>
             <pre>{{ debug_info.backend_status | tojson(indent=4) }}</pre>
         {% endif %}
     </div>
-    
-    <a href="/" class="back-link">Voltar para a loja</a>
+
+    <a href="/" class="back-link">Back to store</a>
 </body>
 </html>

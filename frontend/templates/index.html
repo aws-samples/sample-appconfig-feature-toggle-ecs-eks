@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Catálogo de Produtos</title>
+    <title>Product Catalog</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -71,7 +71,7 @@
             overflow: hidden;
         }
         .product-with-discount:before {
-            content: "OFERTA";
+            content: "OFFER";
             position: absolute;
             top: 10px;
             right: -30px;
@@ -132,13 +132,13 @@
 <body>
     <div class="container">
         <header>
-            <h1>Catálogo de Produtos</h1>
+            <h1>Product Catalog</h1>
         </header>
-        
-        <!-- Verificação explícita para garantir que ambas as condições sejam atendidas -->
+
+        <!-- Explicit check to ensure both conditions are met -->
         {% if promotion_active == True and discount_percentage > 0 %}
         <div class="promotion-banner">
-            PROMOÇÃO ESPECIAL: {{ discount_percentage }}% DE DESCONTO EM PRODUTOS SELECIONADOS!
+            SPECIAL OFFER: {{ discount_percentage }}% OFF ON SELECTED PRODUCTS!
         </div>
         {% endif %}
         
@@ -147,16 +147,16 @@
             <div class="product {% if product.discounted_price is defined %}product-with-discount{% endif %}">
                 <h3>{{ product.name }}</h3>
                 <p>{{ product.description }}</p>
-                <p><strong>Categoria:</strong> {{ product.category }}</p>
-                <p><strong>Em estoque:</strong> {{ product.stock }} unidades</p>
-                
+                <p><strong>Category:</strong> {{ product.category }}</p>
+                <p><strong>In stock:</strong> {{ product.stock }} units</p>
+
                 <div class="price">
                     {% if product.discounted_price is defined %}
-                        <span class="original-price">R\$ {{ "%.2f"|format(product.original_price) }}</span>
-                        <span class="discounted-price">R\$ {{ "%.2f"|format(product.discounted_price) }}</span>
+                        <span class="original-price">\$ {{ "%.2f"|format(product.original_price) }}</span>
+                        <span class="discounted-price">\$ {{ "%.2f"|format(product.discounted_price) }}</span>
                         <span class="discount-badge">-{{ product.discount_applied }}</span>
                     {% else %}
-                        R\$ {{ "%.2f"|format(product.price) }}
+                        \$ {{ "%.2f"|format(product.price) }}
                     {% endif %}
                 </div>
             </div>
@@ -164,11 +164,11 @@
         </div>
         
         <div class="status">
-            <h3>Status do Sistema</h3>
+            <h3>System Status</h3>
             <p><strong>Backend:</strong> {{ backend_data.status }}</p>
-            <p><strong>Promoção ativa:</strong> {{ "Sim" if promotion_active == True and discount_percentage > 0 else "Não" }}</p>
+            <p><strong>Promotion active:</strong> {{ "Yes" if promotion_active == True and discount_percentage > 0 else "No" }}</p>
             {% if promotion_active == True and discount_percentage > 0 %}
-            <p><strong>Desconto:</strong> {{ discount_percentage }}%</p>
+            <p><strong>Discount:</strong> {{ discount_percentage }}%</p>
             {% endif %}
         </div>
     </div>
