@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: backend
+  labels:
+    app: backend
+spec:
+  replicas: 1  # Ajuste conforme necessário
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: 685533552944.dkr.ecr.us-west-2.amazonaws.com/backend:latest  # Substitua pelo caminho correto da sua imagem
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APPCONFIG_APP_ID
+          value: "mjgg9x2"
+        - name: APPCONFIG_ENV_ID
+          value: "qwiomdq"
+        - name: APPCONFIG_CONFIG_ID
+          value: "p7q5mwj"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
