@@ -22,28 +22,6 @@ Parameters:
     Type: String
     Default: Products
     Description: Nome da tabela DynamoDB de produtos.
-  EksOidcProviderArn:
-    Type: String
-    Default: ""
-    Description: >
-      (Opcional) ARN do OIDC provider do cluster EKS para habilitar IRSA.
-      Deixe vazio se for usar apenas ECS. Ex.:
-      arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABC123
-  EksOidcProviderUrl:
-    Type: String
-    Default: ""
-    Description: >
-      (Opcional) URL do OIDC provider, sem https://. Ex.:
-      oidc.eks.us-west-2.amazonaws.com/id/ABC123
-  ServiceAccountNamespace:
-    Type: String
-    Default: backend
-  ServiceAccountName:
-    Type: String
-    Default: appconfig-service-account
-
-Conditions:
-  HasEksOidc: !Not [!Equals [!Ref EksOidcProviderArn, ""]]
 
 Resources:
   # ---------- AWS AppConfig ----------
@@ -65,39 +43,12 @@ Resources:
     Properties:
       ApplicationId: !Ref AppConfigApplication
       Name: !Ref ConfigProfileName
-      # feature flags são armazenadas no AppConfig hosted store
+      # feature flags são armazenadas no AppConfig hosted store.
+      # Profiles do tipo AWS.AppConfig.FeatureFlags já são validados nativamente
+      # pelo AppConfig contra o schema de feature flags; a restrição 0-100 do
+      # discount_percentage é declarada no bloco "constraints" da flag abaixo.
       LocationUri: hosted
       Type: AWS.AppConfig.FeatureFlags
-      Validators:
-        - Type: JSON_SCHEMA
-          Content: |
-            {
-              "$schema": "http://json-schema.org/draft-07/schema#",
-              "type": "object",
-              "properties": {
-                "flags": {
-                  "type": "object",
-                  "properties": {
-                    "discount_enabled": {
-                      "type": "object",
-                      "properties": {
-                        "name": { "type": "string" },
-                        "attributes": {
-                          "type": "object",
-                          "properties": {
-                            "discount_percentage": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 100
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
 
   # Versão inicial da configuração de feature flags (discount desabilitado, 15%)
   AppConfigHostedVersion:
@@ -127,7 +78,8 @@ Resources:
           "version": "1"
         }
 
-  # Deployment gradual (linear, 15 minutos) com bake time para rollback automático
+  # Deployment gradual (linear, 15 minutos) com bake time para rollback automático.
+  # Use esta estratégia ao alternar a flag pelo console durante o demo do blog.
   AppConfigDeploymentStrategy:
     Type: AWS::AppConfig::DeploymentStrategy
     Properties:
@@ -138,6 +90,18 @@ Resources:
       GrowthFactor: 20
       GrowthType: LINEAR
       ReplicateTo: NONE
+
+  # Efetiva a versão inicial da configuração no environment (AllAtOnce, instantâneo).
+  # Sem um Deployment, o AppConfig Agent não teria nenhuma configuração para servir.
+  AppConfigInitialDeployment:
+    Type: AWS::AppConfig::Deployment
+    Properties:
+      ApplicationId: !Ref AppConfigApplication
+      EnvironmentId: !Ref AppConfigEnvironment
+      ConfigurationProfileId: !Ref AppConfigConfigProfile
+      ConfigurationVersion: !Ref AppConfigHostedVersion
+      DeploymentStrategyId: AppConfig.AllAtOnce
+      Description: Deployment inicial da feature flag discount_enabled
 
   # ---------- DynamoDB ----------
   ProductsTable:
@@ -161,23 +125,10 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-          # Confiança para ECS tasks
           - Effect: Allow
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
-          # Confiança para IRSA (EKS) — só é adicionada se o OIDC provider for informado
-          - !If
-            - HasEksOidc
-            - Effect: Allow
-              Principal:
-                Federated: !Ref EksOidcProviderArn
-              Action: sts:AssumeRoleWithWebIdentity
-              Condition:
-                StringEquals:
-                  !Sub "${EksOidcProviderUrl}:sub": !Sub "system:serviceaccount:${ServiceAccountNamespace}:${ServiceAccountName}"
-                  !Sub "${EksOidcProviderUrl}:aud": "sts.amazonaws.com"
-            - !Ref AWS::NoValue
       Policies:
         - PolicyName: AppConfigAgentAccess
           PolicyDocument:

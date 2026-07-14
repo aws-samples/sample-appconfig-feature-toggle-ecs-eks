@@ -73,15 +73,21 @@ python scripts/seed_products.py Products
 
 ## Passo 3 — Build e push das imagens para o ECR
 
+Crie os repositórios via IaC e faça o push. **Em Mac/ARM use `--platform linux/amd64`**
+(Fargate roda amd64; sem isso a task falha com "exec format error"):
+
 ```bash
+aws cloudformation deploy --template-file iac/ecr.yaml \
+  --stack-name appconfig-demo-ecr --region us-west-2
+
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION=us-west-2
-aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+REG=$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REG
 
 for svc in backend frontend; do
-  aws ecr create-repository --repository-name $svc --region $REGION 2>/dev/null || true
-  docker build -t $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$svc:latest ./$svc
-  docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$svc:latest
+  docker build --platform linux/amd64 -t ${REG}/${svc}:latest ./${svc}
+  docker push ${REG}/${svc}:latest
 done
 ```
 
@@ -103,17 +109,40 @@ kubectl get svc frontend-service -n backend \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-## Passo 4b — Deploy no ECS (Fargate)
+## Passo 4b — Deploy no ECS (Fargate) — recomendado
 
-Substitua `<ACCOUNT_ID>` nos JSONs de [`ecs/`](ecs/) e registre as task definitions.
-O `BACKEND_URL` do frontend assume descoberta via **ECS Service Connect / Cloud Map**
-(`backend.demo.local`); ajuste conforme seu setup de rede.
+A stack [`iac/ecs.yaml`](iac/ecs.yaml) cria tudo: cluster, ALB público, security
+groups, Service Connect (o frontend acha o backend via `http://backend:5000`),
+task definitions com o sidecar e os dois services. Passe os outputs da foundation
+stack e as subnets públicas da sua VPC:
 
 ```bash
-aws ecs register-task-definition --cli-input-json file://ecs/backend-taskdef.json  --region us-west-2
-aws ecs register-task-definition --cli-input-json file://ecs/frontend-taskdef.json --region us-west-2
-# Em seguida crie os ECS Services apontando para essas task definitions no seu cluster/VPC.
+REGION=us-west-2
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REG=$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+# IDs vindos dos outputs da foundation stack (Passo 1)
+APP_ID=...; ENV_ID=...; CONFIG_ID=...
+SUBNETS="subnet-aaaa,subnet-bbbb,subnet-cccc"   # subnets públicas da VPC
+VPC_ID=vpc-xxxx
+
+aws cloudformation deploy --template-file iac/ecs.yaml \
+  --stack-name appconfig-demo-ecs --capabilities CAPABILITY_IAM --region $REGION \
+  --parameter-overrides \
+      VpcId=$VPC_ID SubnetIds=$SUBNETS \
+      BackendImage=${REG}/backend:latest FrontendImage=${REG}/frontend:latest \
+      AppConfigAppId=$APP_ID AppConfigEnvId=$ENV_ID AppConfigConfigId=$CONFIG_ID \
+      TaskRoleArn=arn:aws:iam::${ACCOUNT_ID}:role/appconfig-feature-toggle-AppConfigAgentRole \
+      ProductsTableName=Products AwsRegion=$REGION
+
+# URL pública do frontend
+aws cloudformation describe-stacks --stack-name appconfig-demo-ecs --region $REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text
 ```
+
+> Os JSONs em [`ecs/`](ecs/) permanecem como referência standalone da task
+> definition (útil para quem quer registrar manualmente ou entender o formato);
+> o `iac/ecs.yaml` é o caminho automatizado.
 
 ## Passo 5 — Alternar a feature flag
 
@@ -143,5 +172,11 @@ Endpoints úteis:
 
 ```bash
 kubectl delete -f eks/ 2>/dev/null || true
-aws cloudformation delete-stack --stack-name appconfig-feature-toggle --region us-west-2
+aws cloudformation delete-stack --stack-name appconfig-demo-ecs        --region us-west-2
+aws cloudformation wait stack-delete-complete --stack-name appconfig-demo-ecs --region us-west-2
+# esvaziar os repos ECR antes de apagar a stack (ECR não deleta com imagens dentro)
+aws ecr batch-delete-image --repository-name backend  --image-ids imageTag=latest --region us-west-2 2>/dev/null || true
+aws ecr batch-delete-image --repository-name frontend --image-ids imageTag=latest --region us-west-2 2>/dev/null || true
+aws cloudformation delete-stack --stack-name appconfig-demo-ecr        --region us-west-2
+aws cloudformation delete-stack --stack-name appconfig-feature-toggle  --region us-west-2
 ```

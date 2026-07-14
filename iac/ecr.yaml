@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Repositórios ECR para as imagens backend e frontend do demo de feature toggle.
+
+Resources:
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: backend
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  FrontendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: frontend
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+Outputs:
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri
+  FrontendRepositoryUri:
+    Value: !GetAtt FrontendRepository.RepositoryUri

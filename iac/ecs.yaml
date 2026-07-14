@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ECS Fargate para o demo de feature toggle: cluster com Service Connect,
+  ALB público para o frontend, backend interno, e o AppConfig Agent como
+  sidecar em ambas as tasks.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets públicas (para ALB e tasks com IP público).
+  BackendImage:
+    Type: String
+  FrontendImage:
+    Type: String
+  AppConfigAppId:
+    Type: String
+  AppConfigEnvId:
+    Type: String
+  AppConfigConfigId:
+    Type: String
+  TaskRoleArn:
+    Type: String
+    Description: Role usada pelas tasks (AppConfig + DynamoDB).
+  ProductsTableName:
+    Type: String
+    Default: Products
+  AwsRegion:
+    Type: String
+    Default: us-west-2
+
+Resources:
+  # ---------- Cluster + namespace Service Connect ----------
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: appconfig-demo
+      ServiceConnectDefaults:
+        Namespace: appconfig-demo.local
+
+  # ---------- Log groups ----------
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/backend
+      RetentionInDays: 7
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/frontend
+      RetentionInDays: 7
+
+  # ---------- Execution role (pull de imagem + logs) ----------
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ---------- Security groups ----------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB do frontend - libera HTTP 80 da internet
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  FrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Tasks do frontend - recebe do ALB na porta 80
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Tasks do backend - recebe do frontend na porta 5000
+      VpcId: !Ref VpcId
+
+  BackendIngressFromFrontend:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BackendSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5000
+      ToPort: 5000
+      SourceSecurityGroupId: !Ref FrontendSecurityGroup
+
+  # ---------- ALB ----------
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref SubnetIds
+      SecurityGroups: [!Ref AlbSecurityGroup]
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VpcId
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  # ---------- Task definitions ----------
+  BackendTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: backend
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Ref BackendImage
+          Essential: true
+          PortMappings:
+            - Name: backend
+              ContainerPort: 5000
+              Protocol: tcp
+          Environment:
+            - { Name: APPCONFIG_APP_ID, Value: !Ref AppConfigAppId }
+            - { Name: APPCONFIG_ENV_ID, Value: !Ref AppConfigEnvId }
+            - { Name: APPCONFIG_CONFIG_ID, Value: !Ref AppConfigConfigId }
+            - { Name: AWS_DEFAULT_REGION, Value: !Ref AwsRegion }
+            - { Name: DYNAMODB_TABLE_NAME, Value: !Ref ProductsTableName }
+          DependsOn:
+            - { ContainerName: appconfig-agent, Condition: START }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AwsRegion
+              awslogs-stream-prefix: backend
+        - Name: appconfig-agent
+          Image: public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x
+          Essential: true
+          PortMappings:
+            - ContainerPort: 2772
+              Protocol: tcp
+          Environment:
+            - { Name: SERVICE_REGION, Value: !Ref AwsRegion }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AwsRegion
+              awslogs-stream-prefix: appconfig-agent
+
+  FrontendTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: frontend
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: frontend
+          Image: !Ref FrontendImage
+          Essential: true
+          PortMappings:
+            - Name: frontend
+              ContainerPort: 80
+              Protocol: tcp
+          Environment:
+            - { Name: APPCONFIG_APP_ID, Value: !Ref AppConfigAppId }
+            - { Name: APPCONFIG_ENV_ID, Value: !Ref AppConfigEnvId }
+            - { Name: APPCONFIG_CONFIG_ID, Value: !Ref AppConfigConfigId }
+            - { Name: AWS_DEFAULT_REGION, Value: !Ref AwsRegion }
+            # Resolvido via Service Connect (backend:5000 no namespace do cluster)
+            - { Name: BACKEND_URL, Value: "http://backend:5000" }
+          DependsOn:
+            - { ContainerName: appconfig-agent, Condition: START }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroup
+              awslogs-region: !Ref AwsRegion
+              awslogs-stream-prefix: frontend
+        - Name: appconfig-agent
+          Image: public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x
+          Essential: true
+          PortMappings:
+            - ContainerPort: 2772
+              Protocol: tcp
+          Environment:
+            - { Name: SERVICE_REGION, Value: !Ref AwsRegion }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroup
+              awslogs-region: !Ref AwsRegion
+              awslogs-stream-prefix: appconfig-agent
+
+  # ---------- Services ----------
+  BackendService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      ServiceName: backend
+      LaunchType: FARGATE
+      DesiredCount: 2
+      TaskDefinition: !Ref BackendTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups: [!Ref BackendSecurityGroup]
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: appconfig-demo.local
+        Services:
+          - PortName: backend
+            DiscoveryName: backend
+            ClientAliases:
+              - Port: 5000
+                DnsName: backend
+
+  FrontendService:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      Cluster: !Ref Cluster
+      ServiceName: frontend
+      LaunchType: FARGATE
+      DesiredCount: 2
+      TaskDefinition: !Ref FrontendTaskDef
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: !Ref SubnetIds
+          SecurityGroups: [!Ref FrontendSecurityGroup]
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 80
+          TargetGroupArn: !Ref FrontendTargetGroup
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: appconfig-demo.local
+
+Outputs:
+  FrontendUrl:
+    Description: URL pública do frontend
+    Value: !Sub "http://${LoadBalancer.DNSName}"
