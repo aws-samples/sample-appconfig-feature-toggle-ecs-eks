@@ -146,13 +146,28 @@ aws cloudformation describe-stacks --stack-name appconfig-demo-ecs --region $REG
 
 ## Passo 5 — Alternar a feature flag
 
-No console do AWS AppConfig, edite a flag `discount_enabled` (defina `enabled = true`
-e `discount_percentage`) e faça um **deployment** usando a strategy
-`MyPythonApp-gradual-15min`. Em segundos os sidecars propagam a mudança e o catálogo
-passa a exibir os preços com desconto — **sem redeploy de containers**.
+Há duas formas de ligar/desligar a promoção. Em ambas os sidecars propagam a
+mudança em segundos e o catálogo passa a exibir os preços com desconto — **sem
+redeploy de containers**.
+
+**A) Portal de admin embutido (`/admin`)** — recomendado para o demo:
+abra `http://<ALB-DNS>/admin`, marque *Promotion active*, defina o percentual e
+clique em **Apply**. Por baixo, o frontend chama a API do AppConfig (control plane)
+via boto3, criando uma nova hosted version e disparando um deployment com a
+estratégia instantânea (`MyPythonApp-instant`, 0 min de bake). A task role já tem
+as permissões de escrita necessárias (ver `iac/template.yaml`).
+
+**B) Console do AWS AppConfig** — a ferramenta de ops nativa (também descrita no
+blog): edite a flag `discount_enabled` e faça um deployment usando a strategy
+`MyPythonApp-gradual-15min` (rollout gradual com rollback automático).
+
+> A estratégia pré-definida `AppConfig.AllAtOnce` impõe **10 min de bake time**,
+> o que bloqueia toggles em sequência; por isso o portal usa a estratégia
+> instantânea criada pela stack.
 
 Endpoints úteis:
 - `GET /` (frontend) — catálogo.
+- `GET|POST /admin` (frontend) — portal para alternar a flag.
 - `GET /debug` (frontend) — inspeção de config/flag.
 - `GET /api/status` e `GET /api/products` (backend).
 
@@ -166,6 +181,7 @@ Endpoints úteis:
 | `AWS_DEFAULT_REGION` | backend, frontend | Região AWS |
 | `DYNAMODB_TABLE_NAME` | backend | Nome da tabela de produtos (default `Products`) |
 | `BACKEND_URL` | frontend | URL base do backend |
+| `APPCONFIG_DEPLOY_STRATEGY_ID` | frontend | Estratégia usada pelo portal `/admin` (default `AppConfig.AllAtOnce`; use a instantânea) |
 | `APPCONFIG_AGENT_BASE_URL` | backend | Endpoint do agent (default `http://localhost:2772`) |
 
 ## Limpeza

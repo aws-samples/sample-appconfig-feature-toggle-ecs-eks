@@ -91,6 +91,20 @@ Resources:
       GrowthType: LINEAR
       ReplicateTo: NONE
 
+  # Estratégia instantânea (0 min de duração, 0 de bake) usada pelo portal /admin.
+  # A AWS.AppConfig.AllAtOnce pré-definida impõe 10 min de bake, o que bloqueia
+  # toggles em sequência — por isso definimos a nossa.
+  AppConfigInstantStrategy:
+    Type: AWS::AppConfig::DeploymentStrategy
+    Properties:
+      Name: !Sub "${ApplicationName}-instant"
+      Description: Deploy imediato, sem bake time (para o portal admin / demo)
+      DeploymentDurationInMinutes: 0
+      FinalBakeTimeInMinutes: 0
+      GrowthFactor: 100
+      GrowthType: LINEAR
+      ReplicateTo: NONE
+
   # Efetiva a versão inicial da configuração no environment (AllAtOnce, instantâneo).
   # Sem um Deployment, o AppConfig Agent não teria nenhuma configuração para servir.
   AppConfigInitialDeployment:
@@ -139,6 +153,27 @@ Resources:
                   - appconfig:StartConfigurationSession
                   - appconfig:GetLatestConfiguration
                 Resource: "*"
+        # Permite que o portal /admin altere a flag: criar nova hosted version
+        # e disparar um deployment. Escopado à aplicação deste demo.
+        - PolicyName: AppConfigAdminWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - appconfig:CreateHostedConfigurationVersion
+                  - appconfig:GetHostedConfigurationVersion
+                  - appconfig:ListHostedConfigurationVersions
+                  - appconfig:StartDeployment
+                  - appconfig:GetDeployment
+                  - appconfig:GetConfigurationProfile
+                  - appconfig:GetEnvironment
+                Resource:
+                  - !Sub "arn:aws:appconfig:${AWS::Region}:${AWS::AccountId}:application/${AppConfigApplication}"
+                  - !Sub "arn:aws:appconfig:${AWS::Region}:${AWS::AccountId}:application/${AppConfigApplication}/*"
+                  # StartDeployment também autoriza contra o recurso da deployment
+                  # strategy, que não é filho da aplicação.
+                  - !Sub "arn:aws:appconfig:${AWS::Region}:${AWS::AccountId}:deploymentstrategy/*"
         - PolicyName: DynamoDbReadProducts
           PolicyDocument:
             Version: "2012-10-17"
@@ -163,6 +198,9 @@ Outputs:
   DeploymentStrategyId:
     Description: ID da deployment strategy gradual
     Value: !Ref AppConfigDeploymentStrategy
+  InstantStrategyId:
+    Description: ID da deployment strategy instantânea (usada pelo portal /admin)
+    Value: !Ref AppConfigInstantStrategy
   AppConfigAgentRoleArn:
     Description: ARN da role para IRSA (EKS) / task role (ECS)
     Value: !GetAtt AppConfigAgentRole.Arn

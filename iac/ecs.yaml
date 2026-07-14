@@ -20,6 +20,10 @@ Parameters:
     Type: String
   AppConfigConfigId:
     Type: String
+  AppConfigDeployStrategyId:
+    Type: String
+    Default: AppConfig.AllAtOnce
+    Description: ID da deployment strategy usada pelo portal /admin (instantânea).
   TaskRoleArn:
     Type: String
     Description: Role usada pelas tasks (AppConfig + DynamoDB).
@@ -205,6 +209,7 @@ Resources:
             - { Name: APPCONFIG_ENV_ID, Value: !Ref AppConfigEnvId }
             - { Name: APPCONFIG_CONFIG_ID, Value: !Ref AppConfigConfigId }
             - { Name: AWS_DEFAULT_REGION, Value: !Ref AwsRegion }
+            - { Name: APPCONFIG_DEPLOY_STRATEGY_ID, Value: !Ref AppConfigDeployStrategyId }
             # Resolvido via Service Connect (backend:5000 no namespace do cluster)
             - { Name: BACKEND_URL, Value: "http://backend:5000" }
           DependsOn:

@@ -1,20 +1,28 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, redirect, url_for, flash
 import requests
 import json
 import os
 import logging
+
+import boto3
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'appconfig-demo-secret')
 
 # Configuração do AWS AppConfig usando o Agent
 APP_NAME = os.environ.get('APPCONFIG_APP_ID')
 ENV_NAME = os.environ.get('APPCONFIG_ENV_ID')
 CONFIG_PROFILE_NAME = os.environ.get('APPCONFIG_CONFIG_ID')
 BACKEND_URL = os.environ.get('BACKEND_URL')
+
+# Usados pelo portal /admin para escrever a flag diretamente no AppConfig
+AWS_REGION = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
+# Estratégia de deployment instantânea (0 bake). Se ausente, cai para AllAtOnce.
+DEPLOY_STRATEGY_ID = os.environ.get('APPCONFIG_DEPLOY_STRATEGY_ID', 'AppConfig.AllAtOnce')
 
 def get_feature_flag():
     """Consulta o status da feature flag e o valor do desconto usando AppConfig Agent"""
@@ -141,6 +149,91 @@ def debug():
     
     logger.info(f"Informações de debug: {json.dumps(debug_info, default=str)}")
     return render_template('debug.html', debug_info=debug_info)
+
+# ---------------------------------------------------------------------------
+# Portal de administração da feature flag (/admin)
+# Escreve diretamente no AppConfig (control plane) via boto3: cria uma nova
+# hosted configuration version e dispara um deployment. O AppConfig Agent
+# sidecar detecta a mudança no próximo poll e as apps passam a servir o novo valor.
+# ---------------------------------------------------------------------------
+
+def _appconfig_client():
+    return boto3.client('appconfig', region_name=AWS_REGION)
+
+
+def _build_flag_content(enabled, discount_percentage):
+    """Monta o JSON de feature flags no formato esperado pelo AppConfig."""
+    return {
+        "flags": {
+            "discount_enabled": {
+                "name": "discount_enabled",
+                "attributes": {
+                    "discount_percentage": {
+                        "constraints": {"type": "number", "minimum": 0, "maximum": 100}
+                    }
+                }
+            }
+        },
+        "values": {
+            "discount_enabled": {
+                "enabled": bool(enabled),
+                "discount_percentage": int(discount_percentage)
+            }
+        },
+        "version": "1"
+    }
+
+
+def set_flag(enabled, discount_percentage):
+    """Cria uma nova versão da configuração e dispara o deployment."""
+    client = _appconfig_client()
+    content = json.dumps(_build_flag_content(enabled, discount_percentage)).encode('utf-8')
+
+    version = client.create_hosted_configuration_version(
+        ApplicationId=APP_NAME,
+        ConfigurationProfileId=CONFIG_PROFILE_NAME,
+        Content=content,
+        ContentType='application/json'
+    )
+    version_number = version['VersionNumber']
+    logger.info(f"Nova hosted version criada: {version_number}")
+
+    client.start_deployment(
+        ApplicationId=APP_NAME,
+        EnvironmentId=ENV_NAME,
+        DeploymentStrategyId=DEPLOY_STRATEGY_ID,
+        ConfigurationProfileId=CONFIG_PROFILE_NAME,
+        ConfigurationVersion=str(version_number),
+        Description=f"Toggle via portal /admin: enabled={enabled}, discount={discount_percentage}%"
+    )
+    logger.info("Deployment iniciado")
+    return version_number
+
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    """Portal simples para ligar/desligar a promoção."""
+    if request.method == 'POST':
+        enabled = request.form.get('enabled') == 'on'
+        try:
+            discount = int(request.form.get('discount_percentage', 0))
+        except ValueError:
+            discount = 0
+        discount = max(0, min(100, discount))
+        try:
+            version = set_flag(enabled, discount)
+            state = 'ENABLED' if enabled else 'DISABLED'
+            flash(f"Promotion {state} ({discount}%). New version {version} published — "
+                  f"the change propagates within seconds.", 'success')
+        except Exception as e:
+            logger.error(f"Error updating the flag: {e}")
+            flash(f"Error updating the flag: {e}", 'error')
+        return redirect(url_for('admin'))
+
+    # GET: mostra o estado atual (lido via o AppConfig Agent local)
+    feature = get_feature_flag()
+    return render_template('admin.html', feature=feature)
+
 
 if __name__ == '__main__':
     logger.info("Iniciando aplicação frontend")
