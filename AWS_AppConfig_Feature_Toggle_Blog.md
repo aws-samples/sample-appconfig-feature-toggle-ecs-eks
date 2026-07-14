@@ -6,6 +6,13 @@ In this post, we show how to implement feature toggles in Amazon ECS and Amazon 
 
 We'll build a sample product-catalog application with a frontend and a backend, and add a discount promotion that can be toggled on and off entirely through AWS AppConfig—no container redeploys.
 
+In this post, you will:
+
+- Set up an AWS AppConfig application, environment, and feature flag configuration profile.
+- Read the feature flag from your application through the AWS AppConfig Agent.
+- Deploy the agent as a sidecar on Amazon EKS and Amazon ECS.
+- Toggle the feature and watch it propagate to running containers without a redeploy.
+
 > **Follow along with the code.** The complete sample—application code, container definitions, Kubernetes manifests, ECS task definitions, and the infrastructure-as-code to provision the AWS AppConfig resources—is available on GitHub:
 >
 > **`https://github.com/<YOUR-GITHUB-ORG>/appconfig-feature-toggle-demo`** *(placeholder — replace with the public repository URL)*
@@ -18,7 +25,8 @@ Because the interface is plain HTTP returning JSON, it works from any language, 
 
 ## Solution architecture
 
-![Architecture Diagram](Arquitetura.png)
+![Figure 1: Frontend and backend containers, each with an AWS AppConfig Agent sidecar reading configuration from AWS AppConfig](Arquitetura.png)
+*Figure 1: The frontend and backend containers each run an AWS AppConfig Agent sidecar that reads the feature flag from AWS AppConfig over localhost.*
 
 Both the frontend and backend containers run an AWS AppConfig Agent sidecar. When you enable the discount flag in AWS AppConfig and start a deployment, the agent in each container picks up the new value on its next poll. The backend begins applying the discount to product prices, and the frontend updates its UI to show the promotion—all without redeploying or restarting any container.
 
@@ -30,7 +38,7 @@ Both the frontend and backend containers run an AWS AppConfig Agent sidecar. Whe
 - For EKS: `kubectl` and an existing EKS cluster.
 - The sample repository cloned locally (see the link above).
 
-## Step 1: Set up AWS AppConfig
+## Setting up AWS AppConfig
 
 Create an [application](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-application.html) as a logical container for your configuration, an [environment](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-environment.html) named `Production` for your deployment target, and a [feature flag configuration profile](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-configuration-and-profile.html) that defines the flag. Our flag is `discount_enabled`, with a boolean and a discount percentage:
 
@@ -47,7 +55,7 @@ Feature flag profiles are validated natively by AWS AppConfig, and you can add [
 
 The sample repository provisions all of this with an AWS CloudFormation template so you can create it in one command.
 
-## Step 2: Read the flag from your application
+## Reading the flag from your application
 
 With the agent running as a sidecar, your application reads configuration from the local endpoint. Here's the backend, which caches the result briefly and falls back to the last known value if a request fails:
 
@@ -93,7 +101,7 @@ def get_product_list():
 
 Notice there are no AWS SDK calls or credentials in the application code—the agent handles all of that.
 
-## Step 3: Deploy the sidecar in Amazon EKS
+## Deploying the sidecar on Amazon EKS
 
 On EKS, the agent is a second container in the same pod. Both containers share the pod's network namespace, so the application reaches the agent over `localhost`:
 
@@ -119,7 +127,7 @@ spec:
 
 Grant the pod access to AWS AppConfig with [IAM Roles for Service Accounts (IRSA)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)—no credentials in the image. The repository includes the complete manifests (namespace, service account, deployments with health probes, and services).
 
-## Step 4: Deploy the sidecar in Amazon ECS
+## Deploying the sidecar on Amazon ECS
 
 On ECS, the agent is a second container in the same task definition. The application container declares a dependency so the agent starts first:
 
@@ -148,9 +156,17 @@ On ECS, the agent is a second container in the same task definition. The applica
 
 The task role provides AWS AppConfig access, keeping credentials out of the container. See the repository for the full task definitions and the CloudFormation that deploys the cluster and services.
 
-## Step 5: Toggle the feature
+## Toggling the feature
 
-With the application running, enable the flag in the AWS AppConfig console: set `enabled` to `true`, choose a deployment strategy, and start the deployment. Within seconds of the agent's next poll, the catalog shows discounted prices across every container instance—no redeploy required. To roll back, deploy the previous configuration version (or let an alarm trigger automatic rollback).
+With the application running, enable the flag in the AWS AppConfig console: set `enabled` to `true`, choose a deployment strategy, and start the deployment.
+
+![Figure 2: Enabling the discount_enabled flag and starting a deployment in the AWS AppConfig console](placeholder-figure-2.png)
+*Figure 2: Enabling the `discount_enabled` flag and starting a deployment in the AWS AppConfig console.*
+
+Within seconds of the agent's next poll, the catalog shows discounted prices across every container instance—no redeploy required. To roll back, deploy the previous configuration version (or let an alarm trigger automatic rollback).
+
+![Figure 3: The product catalog showing the promotion banner and discounted prices after the flag is enabled](placeholder-figure-3.png)
+*Figure 3: The product catalog showing the promotion banner and discounted prices after the flag is enabled.*
 
 ## Best practices
 
@@ -173,3 +189,9 @@ AWS AppConfig with the sidecar pattern gives you dynamic feature toggles in Amaz
 - [AWS AppConfig documentation](https://docs.aws.amazon.com/appconfig/latest/userguide/what-is-appconfig.html)
 - [AWS AppConfig Agent for containers](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-integration-containers-agent.html)
 - [Creating feature flags in AWS AppConfig](https://docs.aws.amazon.com/appconfig/latest/userguide/appconfig-creating-configuration-and-profile.html)
+
+## About the authors
+
+![Author photo](placeholder-author.png)
+
+**\<Author Name\>** is a \<role\> at \<organization\>. \<One or two sentences about the author's focus areas and background.\> *(placeholder — replace with the author bio and photo.)*
