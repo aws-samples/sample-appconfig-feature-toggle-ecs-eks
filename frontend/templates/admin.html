@@ -4,93 +4,193 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — Feature Toggle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #f4f5f7;
+            --surface: #ffffff;
+            --text: #1a1f36;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --brand: #4f46e5;
+            --brand-dark: #4338ca;
+            --accent: #e11d48;
+            --ok: #16a34a;
+            --ok-soft: #dcfce7;
+            --off-soft: #f3f4f6;
+            --shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.06);
+            --shadow-lg: 0 12px 32px rgba(16,24,40,.12);
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 40px 20px;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0; color: var(--text); background: var(--bg);
+            -webkit-font-smoothing: antialiased;
         }
-        .container { max-width: 560px; margin: 0 auto; }
-        .card {
-            background: #fff;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        .navbar {
+            position: sticky; top: 0; z-index: 20;
+            background: rgba(255,255,255,.85);
+            backdrop-filter: saturate(180%) blur(12px);
+            border-bottom: 1px solid var(--border);
         }
-        h1 { margin-top: 0; color: #232f3e; }
-        .subtitle { color: #666; margin-top: -8px; margin-bottom: 24px; font-size: 0.9rem; }
-        .state {
-            display: inline-block;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 0.85rem;
+        .navbar-inner {
+            max-width: 1180px; margin: 0 auto; padding: 14px 24px;
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .state.on  { background: #e8f5e9; color: #2e7d32; }
-        .state.off { background: #ffebee; color: #c62828; }
-        .field { margin: 22px 0; }
-        label { display: block; font-weight: 600; margin-bottom: 6px; color: #333; }
-        .switch-row { display: flex; align-items: center; gap: 12px; }
-        input[type="number"] {
-            width: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; letter-spacing: -.02em; }
+        .brand .logo {
+            width: 32px; height: 32px; border-radius: 9px;
+            background: linear-gradient(135deg, var(--brand), #7c3aed);
+            display: grid; place-items: center; color: #fff; font-size: 1rem;
         }
+        .nav-links { display: flex; gap: 8px; }
+        .nav-links a {
+            text-decoration: none; color: var(--text-muted); font-weight: 500; font-size: .9rem;
+            padding: 8px 14px; border-radius: 8px; transition: all .15s;
+        }
+        .nav-links a:hover, .nav-links a.active { color: var(--brand); background: #eef2ff; }
+
+        .wrap { max-width: 560px; margin: 44px auto; padding: 0 24px; }
+        .page-head { margin-bottom: 20px; }
+        .page-head h1 { font-size: 1.7rem; font-weight: 800; letter-spacing: -.03em; margin: 0 0 6px; }
+        .page-head p { color: var(--text-muted); margin: 0; font-size: .95rem; }
+        .page-head code { background: #eef2ff; color: var(--brand-dark); padding: 2px 7px; border-radius: 6px; font-size: .85em; }
+
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+
+        .flash { padding: 13px 18px; font-size: .9rem; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+        .flash.success { background: var(--ok-soft); color: #166534; border-bottom: 1px solid #bbf7d0; }
+        .flash.error   { background: #fee2e2; color: #991b1b; border-bottom: 1px solid #fecaca; }
+
+        .state-hero {
+            padding: 26px 24px; display: flex; align-items: center; gap: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .state-hero.on  { background: linear-gradient(135deg, #f0fdf4, #fff); }
+        .state-hero.off { background: linear-gradient(135deg, #f9fafb, #fff); }
+        .state-icon { width: 52px; height: 52px; border-radius: 13px; display: grid; place-items: center; font-size: 1.5rem; flex-shrink: 0; }
+        .state-hero.on  .state-icon { background: var(--ok-soft); }
+        .state-hero.off .state-icon { background: var(--off-soft); }
+        .state-label { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+        .state-value { font-size: 1.25rem; font-weight: 800; letter-spacing: -.02em; }
+        .state-value.on { color: var(--ok); }
+        .state-value.off { color: var(--text-muted); }
+
+        form { padding: 24px; }
+        .field { margin-bottom: 22px; }
+        .field-label { display: block; font-weight: 600; font-size: .92rem; margin-bottom: 4px; }
+        .field-hint { color: var(--text-muted); font-size: .82rem; margin: 0 0 12px; }
+
+        /* toggle switch */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 16px; background: #f9fafb; border: 1px solid var(--border); border-radius: 11px; }
+        .toggle-row .t-text { font-weight: 600; font-size: .95rem; }
+        .toggle-row .t-sub { color: var(--text-muted); font-weight: 400; font-size: .82rem; }
+        .switch { position: relative; display: inline-block; width: 52px; height: 30px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; inset: 0; background: #cbd5e1;
+            border-radius: 999px; transition: .25s;
+        }
+        .slider:before {
+            content: ""; position: absolute; height: 24px; width: 24px; left: 3px; top: 3px;
+            background: #fff; border-radius: 50%; transition: .25s; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        }
+        .switch input:checked + .slider { background: var(--ok); }
+        .switch input:checked + .slider:before { transform: translateX(22px); }
+
+        .num-wrap { display: flex; align-items: center; gap: 12px; }
+        input[type="range"] { flex: 1; accent-color: var(--brand); }
+        .pct-badge {
+            min-width: 62px; text-align: center; font-weight: 800; font-size: 1.05rem;
+            background: #eef2ff; color: var(--brand-dark); padding: 8px 10px; border-radius: 10px;
+        }
+
         button {
-            background: #ff9900; color: #232f3e; border: none; padding: 12px 24px;
-            border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; width: 100%;
+            width: 100%; background: var(--brand); color: #fff; border: 0;
+            padding: 14px; border-radius: 11px; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: background .15s, transform .05s; font-family: inherit;
         }
-        button:hover { background: #e88b00; }
-        .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 0.9rem; }
-        .flash.success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #2e7d32; }
-        .flash.error   { background: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
-        .links { margin-top: 20px; font-size: 0.85rem; }
-        .links a { color: #007eb9; text-decoration: none; margin-right: 16px; }
-        input[type="checkbox"] { width: 20px; height: 20px; }
+        button:hover { background: var(--brand-dark); }
+        button:active { transform: translateY(1px); }
+
+        .foot-note { text-align: center; color: var(--text-muted); font-size: .8rem; margin-top: 16px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card">
-            <h1>Feature Toggle — Promotion</h1>
-            <p class="subtitle">Controls the <code>discount_enabled</code> flag in AWS AppConfig.</p>
-
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% for category, message in messages %}
-                <div class="flash {{ category }}">{{ message }}</div>
-              {% endfor %}
-            {% endwith %}
-
-            <p>
-                Current state:
-                {% if feature.enabled %}
-                    <span class="state on">ENABLED — {{ feature.discount_percentage }}%</span>
-                {% else %}
-                    <span class="state off">DISABLED</span>
-                {% endif %}
-            </p>
-
-            <form method="POST">
-                <div class="field">
-                    <label for="enabled">Promotion active</label>
-                    <div class="switch-row">
-                        <input type="checkbox" id="enabled" name="enabled"
-                               {% if feature.enabled %}checked{% endif %}>
-                        <span>Check to apply the discount to the catalog</span>
-                    </div>
-                </div>
-                <div class="field">
-                    <label for="discount_percentage">Discount percentage (%)</label>
-                    <input type="number" id="discount_percentage" name="discount_percentage"
-                           min="0" max="100" value="{{ feature.discount_percentage or 15 }}">
-                </div>
-                <button type="submit">Apply</button>
-            </form>
-
-            <div class="links">
-                <a href="/">← View catalog</a>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <div class="brand"><span class="logo">🛍️</span> ShopDemo</div>
+            <div class="nav-links">
+                <a href="/">Catalog</a>
+                <a href="/admin" class="active">Admin</a>
                 <a href="/debug">Debug</a>
             </div>
         </div>
+    </nav>
+
+    <div class="wrap">
+        <div class="page-head">
+            <h1>Feature Toggle</h1>
+            <p>Control the <code>discount_enabled</code> flag in AWS AppConfig. Changes propagate to all containers within seconds — no redeploy.</p>
+        </div>
+
+        <div class="card">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% for category, message in messages %}
+                <div class="flash {{ category }}">
+                    <span>{{ "✅" if category == "success" else "⚠️" }}</span>
+                    <span>{{ message }}</span>
+                </div>
+              {% endfor %}
+            {% endwith %}
+
+            <div class="state-hero {{ 'on' if feature.enabled else 'off' }}">
+                <div class="state-icon">{{ "🎉" if feature.enabled else "💤" }}</div>
+                <div>
+                    <div class="state-label">Current state</div>
+                    {% if feature.enabled %}
+                        <div class="state-value on">Promotion active · {{ feature.discount_percentage }}% off</div>
+                    {% else %}
+                        <div class="state-value off">Promotion disabled</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <form method="POST">
+                <div class="field">
+                    <span class="field-label">Promotion</span>
+                    <p class="field-hint">Enable to apply the discount across the catalog.</p>
+                    <label class="toggle-row">
+                        <span>
+                            <span class="t-text">Discount enabled</span><br>
+                            <span class="t-sub">Toggle the storewide promotion on or off</span>
+                        </span>
+                        <span class="switch">
+                            <input type="checkbox" id="enabled" name="enabled" {% if feature.enabled %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="discount_percentage">Discount percentage</label>
+                    <p class="field-hint">How much to take off each product's price.</p>
+                    <div class="num-wrap">
+                        <input type="range" id="discount_percentage" name="discount_percentage"
+                               min="0" max="100" step="5" value="{{ feature.discount_percentage or 15 }}"
+                               oninput="document.getElementById('pct').textContent = this.value + '%'">
+                        <span class="pct-badge" id="pct">{{ feature.discount_percentage or 15 }}%</span>
+                    </div>
+                </div>
+
+                <button type="submit">Apply changes</button>
+            </form>
+        </div>
+
+        <p class="foot-note">Backed by AWS AppConfig · updates via the sidecar agent</p>
     </div>
 </body>
 </html>

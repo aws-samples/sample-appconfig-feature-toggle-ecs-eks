@@ -4,173 +4,221 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product Catalog</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        {% set promo = promotion_active == True and discount_percentage > 0 %}
+        :root {
+            --bg: #f4f5f7;
+            --surface: #ffffff;
+            --text: #1a1f36;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --brand: #4f46e5;
+            --brand-dark: #4338ca;
+            --accent: #e11d48;
+            --accent-soft: #ffe4e6;
+            --shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.06);
+            --shadow-lg: 0 12px 32px rgba(16,24,40,.12);
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: {% if promotion_active == True and discount_percentage > 0 %}#ffebee{% else %}#f5f5f5{% endif %};
-            transition: background-color 0.5s ease;
+            color: var(--text);
+            background: var(--bg);
+            -webkit-font-smoothing: antialiased;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        .navbar {
+            position: sticky; top: 0; z-index: 20;
+            background: rgba(255,255,255,.85);
+            backdrop-filter: saturate(180%) blur(12px);
+            border-bottom: 1px solid var(--border);
         }
-        header {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            {% if promotion_active == True and discount_percentage > 0 %}
-            border-bottom: 3px solid #e74c3c;
-            {% endif %}
+        .navbar-inner {
+            max-width: 1180px; margin: 0 auto; padding: 14px 24px;
+            display: flex; align-items: center; justify-content: space-between;
         }
-        h1 {
-            color: #333;
-            margin: 0;
-            {% if promotion_active == True and discount_percentage > 0 %}
-            color: #e74c3c;
-            {% endif %}
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; letter-spacing: -.02em; }
+        .brand .logo {
+            width: 32px; height: 32px; border-radius: 9px;
+            background: linear-gradient(135deg, var(--brand), #7c3aed);
+            display: grid; place-items: center; color: #fff; font-size: 1rem;
         }
-        .promotion-banner {
-            background-color: #e74c3c;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 20px;
-            animation: pulse 2s infinite;
+        .nav-links { display: flex; gap: 8px; }
+        .nav-links a {
+            text-decoration: none; color: var(--text-muted); font-weight: 500; font-size: .9rem;
+            padding: 8px 14px; border-radius: 8px; transition: all .15s;
         }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.8; }
-            100% { opacity: 1; }
+        .nav-links a:hover { color: var(--brand); background: #eef2ff; }
+
+        .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+        .hero {
+            padding: 48px 0 28px;
         }
-        .products {
+        .hero h1 { font-size: 2.1rem; font-weight: 800; letter-spacing: -.03em; margin: 0 0 8px; }
+        .hero p { color: var(--text-muted); font-size: 1.02rem; margin: 0; }
+
+        .promo-banner {
+            display: flex; align-items: center; gap: 14px;
+            background: linear-gradient(135deg, var(--accent), #be123c);
+            color: #fff; padding: 16px 22px; border-radius: var(--radius);
+            margin: 8px 0 28px; box-shadow: var(--shadow-lg);
+        }
+        .promo-banner .tag {
+            background: rgba(255,255,255,.22); padding: 6px 12px; border-radius: 999px;
+            font-weight: 700; font-size: .8rem; letter-spacing: .04em; white-space: nowrap;
+        }
+        .promo-banner .txt { font-weight: 600; font-size: 1.02rem; }
+        .promo-banner .pulse { width: 9px; height: 9px; border-radius: 50%; background: #fff; margin-left: auto; animation: pulse 1.6s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.8); } }
+
+        .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+            gap: 22px; padding-bottom: 40px;
         }
-        .product {
-            background-color: white;
-            border-radius: 5px;
-            padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
+        .card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+            display: flex; flex-direction: column;
+            transition: transform .18s ease, box-shadow .18s ease;
         }
-        .product:hover {
-            transform: translateY(-5px);
-        }
-        /* Destaque para produtos com desconto */
-        .product-with-discount {
-            border: 2px solid #e74c3c;
-            box-shadow: 0 4px 8px rgba(231, 76, 60, 0.2);
+        .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+        .thumb {
+            height: 140px; display: grid; place-items: center; font-size: 2.6rem;
+            background: linear-gradient(135deg, #eef2ff, #f5f3ff);
             position: relative;
-            overflow: hidden;
         }
-        .product-with-discount:before {
-            content: "OFFER";
-            position: absolute;
-            top: 10px;
-            right: -30px;
-            background-color: #e74c3c;
-            color: white;
-            padding: 5px 40px;
-            transform: rotate(45deg);
-            font-size: 12px;
-            font-weight: bold;
-            z-index: 1;
+        .card.on-sale .thumb { background: linear-gradient(135deg, var(--accent-soft), #fff1f2); }
+        .sale-flag {
+            position: absolute; top: 12px; left: 12px;
+            background: var(--accent); color: #fff; font-size: .72rem; font-weight: 700;
+            padding: 4px 10px; border-radius: 999px; letter-spacing: .04em;
         }
-        .product h3 {
-            margin-top: 0;
-            color: #333;
+        .card-body { padding: 18px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+        .card .cat {
+            font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+            color: var(--brand);
         }
-        .product p {
-            color: #666;
-            margin-bottom: 15px;
+        .card h3 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; }
+        .card .desc { color: var(--text-muted); font-size: .88rem; line-height: 1.45; margin: 0; flex: 1; }
+        .stock { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-muted); }
+        .stock .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+        .stock.low .dot { background: #f59e0b; }
+        .price-row {
+            display: flex; align-items: baseline; gap: 10px; margin-top: 10px;
+            padding-top: 14px; border-top: 1px solid var(--border);
         }
-        .price {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #2c3e50;
+        .price { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
+        .price.now { color: var(--accent); }
+        .price.was { font-size: .95rem; font-weight: 500; color: #9ca3af; text-decoration: line-through; }
+        .save-pill {
+            margin-left: auto; background: var(--accent-soft); color: var(--accent);
+            font-size: .75rem; font-weight: 700; padding: 4px 9px; border-radius: 8px;
         }
-        .original-price {
-            text-decoration: line-through;
-            color: #999;
-            margin-right: 10px;
+
+        .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+
+        footer {
+            border-top: 1px solid var(--border); background: var(--surface);
+            margin-top: 20px;
         }
-        .discounted-price {
-            color: #e74c3c;
+        .footer-inner {
+            max-width: 1180px; margin: 0 auto; padding: 18px 24px;
+            display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+            font-size: .85rem; color: var(--text-muted);
         }
-        .discount-badge {
-            background-color: #e74c3c;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 0.8rem;
-            display: inline-block;
-            margin-left: 10px;
-        }
-        .status {
-            margin-top: 30px;
-            padding: 15px;
-            background-color: #eee;
-            border-radius: 5px;
-            {% if promotion_active == True and discount_percentage > 0 %}
-            border-left: 4px solid #e74c3c;
-            {% endif %}
-        }
-        .debug-info {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #999;
+        .status-chip { display: inline-flex; align-items: center; gap: 7px; }
+        .status-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-chip .dot.ok { background: #22c55e; }
+        .status-chip .dot.off { background: #9ca3af; }
+        .status-chip .dot.warn { background: #ef4444; }
+
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 1.6rem; }
+            .promo-banner { flex-wrap: wrap; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Product Catalog</h1>
-        </header>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <div class="brand"><span class="logo">🛍️</span> ShopDemo</div>
+            <div class="nav-links">
+                <a href="/">Catalog</a>
+                <a href="/admin">Admin</a>
+                <a href="/debug">Debug</a>
+            </div>
+        </div>
+    </nav>
 
-        <!-- Explicit check to ensure both conditions are met -->
-        {% if promotion_active == True and discount_percentage > 0 %}
-        <div class="promotion-banner">
-            SPECIAL OFFER: {{ discount_percentage }}% OFF ON SELECTED PRODUCTS!
+    <div class="container">
+        <div class="hero">
+            <h1>Product Catalog</h1>
+            <p>Browse our selection — pricing updates in real time via AWS AppConfig feature flags.</p>
+        </div>
+
+        {% if promo %}
+        <div class="promo-banner">
+            <span class="tag">🔥 LIMITED TIME</span>
+            <span class="txt">Special offer — {{ discount_percentage }}% off on selected products!</span>
+            <span class="pulse"></span>
         </div>
         {% endif %}
-        
-        <div class="products">
-            {% for product in products %}
-            <div class="product {% if product.discounted_price is defined %}product-with-discount{% endif %}">
-                <h3>{{ product.name }}</h3>
-                <p>{{ product.description }}</p>
-                <p><strong>Category:</strong> {{ product.category }}</p>
-                <p><strong>In stock:</strong> {{ product.stock }} units</p>
 
-                <div class="price">
-                    {% if product.discounted_price is defined %}
-                        <span class="original-price">\$ {{ "%.2f"|format(product.original_price) }}</span>
-                        <span class="discounted-price">\$ {{ "%.2f"|format(product.discounted_price) }}</span>
-                        <span class="discount-badge">-{{ product.discount_applied }}</span>
-                    {% else %}
-                        \$ {{ "%.2f"|format(product.price) }}
-                    {% endif %}
+        {% if products %}
+        <div class="grid">
+            {% for product in products %}
+            {% set icon = {'Electronics':'🎧','Peripherals':'⌨️','Monitors':'🖥️','Furniture':'🪑'}.get(product.category, '📦') %}
+            <div class="card {% if product.discounted_price is defined %}on-sale{% endif %}">
+                <div class="thumb">
+                    {% if product.discounted_price is defined %}<span class="sale-flag">SALE</span>{% endif %}
+                    {{ icon }}
+                </div>
+                <div class="card-body">
+                    <span class="cat">{{ product.category }}</span>
+                    <h3>{{ product.name }}</h3>
+                    <p class="desc">{{ product.description }}</p>
+                    <span class="stock {% if product.stock|int < 15 %}low{% endif %}">
+                        <span class="dot"></span>
+                        {% if product.stock|int < 15 %}Only {{ product.stock }} left{% else %}{{ product.stock }} in stock{% endif %}
+                    </span>
+                    <div class="price-row">
+                        {% if product.discounted_price is defined %}
+                            <span class="price now">\${{ "%.2f"|format(product.discounted_price) }}</span>
+                            <span class="price was">\${{ "%.2f"|format(product.original_price) }}</span>
+                            <span class="save-pill">-{{ product.discount_applied }}</span>
+                        {% else %}
+                            <span class="price">\${{ "%.2f"|format(product.price) }}</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endfor %}
         </div>
-        
-        <div class="status">
-            <h3>System Status</h3>
-            <p><strong>Backend:</strong> {{ backend_data.status }}</p>
-            <p><strong>Promotion active:</strong> {{ "Yes" if promotion_active == True and discount_percentage > 0 else "No" }}</p>
-            {% if promotion_active == True and discount_percentage > 0 %}
-            <p><strong>Discount:</strong> {{ discount_percentage }}%</p>
-            {% endif %}
+        {% else %}
+        <div class="empty">
+            <p style="font-size:2.5rem;margin:0">🗂️</p>
+            <p>No products to show. The backend may be unavailable.</p>
         </div>
+        {% endif %}
     </div>
+
+    <footer>
+        <div class="footer-inner">
+            <span class="status-chip">
+                <span class="dot {% if backend_data.status == 'operational' %}ok{% else %}warn{% endif %}"></span>
+                Backend: {{ backend_data.status | default('unknown') }}
+            </span>
+            <span class="status-chip">
+                <span class="dot {% if promo %}ok{% else %}off{% endif %}"></span>
+                Promotion: {{ "active — " ~ discount_percentage ~ "%" if promo else "inactive" }}
+            </span>
+            <span style="margin-left:auto">Powered by AWS AppConfig · sidecar pattern</span>
+        </div>
+    </footer>
 </body>
 </html>
