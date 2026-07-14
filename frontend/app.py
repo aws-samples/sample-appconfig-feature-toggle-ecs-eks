@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'appconfig-demo-secret')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(32).hex())
 
 # Configuração do AWS AppConfig usando o Agent
 APP_NAME = os.environ.get('APPCONFIG_APP_ID')
@@ -237,4 +237,4 @@ def admin():
 
 if __name__ == '__main__':
     logger.info("Iniciando aplicação frontend")
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=80)  # nosec B104 - required for container networking

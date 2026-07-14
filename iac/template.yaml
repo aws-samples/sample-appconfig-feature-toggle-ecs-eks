@@ -123,6 +123,10 @@ Resources:
     Properties:
       TableName: !Ref ProductsTableName
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -152,7 +156,9 @@ Resources:
                 Action:
                   - appconfig:StartConfigurationSession
                   - appconfig:GetLatestConfiguration
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:aws:appconfig:${AWS::Region}:${AWS::AccountId}:application/${AppConfigApplication}"
+                  - !Sub "arn:aws:appconfig:${AWS::Region}:${AWS::AccountId}:application/${AppConfigApplication}/*"
         # Permite que o portal /admin altere a flag: criar nova hosted version
         # e disparar um deployment. Escopado à aplicação deste demo.
         - PolicyName: AppConfigAdminWrite
