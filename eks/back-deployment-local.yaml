@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: backend
+  labels:
+    app: backend
+spec:
+  replicas: 1  # Ajuste conforme necessário
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: 685533552944.dkr.ecr.us-west-2.amazonaws.com/backend:latest  # Substitua pelo caminho correto da sua imagem
+        ports:
+        - containerPort: 5000
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+      - name: appconfig-agent
+        image: public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x
+        ports:
+        - name: http
+          containerPort: 2772
+          protocol: TCP
+        env:
+        - name: SERVICE_REGION
+          value: us-west-2
+        imagePullPolicy: IfNotPresent

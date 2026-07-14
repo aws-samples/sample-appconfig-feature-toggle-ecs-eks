@@ -1,0 +1,4 @@
+flask==2.0.1
+werkzeug==2.0.1
+boto3==1.20.32
+requests==2.27.1

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend
+spec:
+  replicas: 1  # Você pode ajustar o número de réplicas conforme necessário
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: 685533552944.dkr.ecr.us-west-2.amazonaws.com/frontend:latest  # Substitua pelo caminho correto da sua imagem
+        ports:
+        - containerPort: 80
+        env:
+        - name: APPCONFIG_APP_ID
+          value: "mjgg9x2"
+        - name: APPCONFIG_ENV_ID
+          value: "qwiomdq"
+        - name: APPCONFIG_CONFIG_ID
+          value: "p7q5mwj"
+        - name: AWS_DEFAULT_REGION
+          value: "us-west-2"
+        - name: BACKEND_URL
+          value: "http://backend:5000"  # Referência ao serviço Kubernetes do backend
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"

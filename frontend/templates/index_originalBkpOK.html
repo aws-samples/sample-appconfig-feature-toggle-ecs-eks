@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Produtos</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin: 0;
+        }
+        .promotion-banner {
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+        .products {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .product {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .product:hover {
+            transform: translateY(-5px);
+        }
+        /* Destaque para produtos com desconto */
+        .product-with-discount {
+            border: 2px solid #e74c3c;
+            box-shadow: 0 4px 8px rgba(231, 76, 60, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        .product-with-discount:before {
+            content: "OFERTA";
+            position: absolute;
+            top: 10px;
+            right: -30px;
+            background-color: #e74c3c;
+            color: white;
+            padding: 5px 40px;
+            transform: rotate(45deg);
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1;
+        }
+        .product h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .product p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .price {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .original-price {
+            text-decoration: line-through;
+            color: #999;
+            margin-right: 10px;
+        }
+        .discounted-price {
+            color: #e74c3c;
+        }
+        .discount-badge {
+            background-color: #e74c3c;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .status {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #eee;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Catálogo de Produtos</h1>
+        </header>
+        
+        {% if promotion_active %}
+        <div class="promotion-banner">
+            PROMOÇÃO ESPECIAL: {{ discount_percentage }}% DE DESCONTO EM PRODUTOS SELECIONADOS!
+        </div>
+        {% endif %}
+        
+        <div class="products">
+            {% for product in products %}
+            <div class="product {% if product.discounted_price is defined %}product-with-discount{% endif %}">
+                <h3>{{ product.name }}</h3>
+                <p>{{ product.description }}</p>
+                <p><strong>Categoria:</strong> {{ product.category }}</p>
+                <p><strong>Em estoque:</strong> {{ product.stock }} unidades</p>
+                
+                <div class="price">
+                    {% if product.discounted_price is defined %}
+                        <span class="original-price">$ {{ "%.2f"|format(product.original_price) }}</span>
+                        <span class="discounted-price">$ {{ "%.2f"|format(product.discounted_price) }}</span>
+                        <span class="discount-badge">-{{ product.discount_applied }}</span>
+                    {% else %}
+                        R\\$ {{ "%.2f"|format(product.price) }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="status">
+            <h3>Status do Sistema</h3>
+            <p><strong>Backend:</strong> {{ backend_data.status }}</p>
+            <p><strong>Promoção ativa:</strong> {{ "Sim" if promotion_active else "Não" }}</p>
+            {% if promotion_active %}
+            <p><strong>Desconto:</strong> {{ discount_percentage }}%</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
