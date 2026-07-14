@@ -18,12 +18,16 @@ CORS(app)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
-APPCONFIG_APPLICATION_NAME = "MyPythonApp"
-APPCONFIG_CONFIG_PROFILE_NAME = "FeatureFlags"
-APPCONFIG_ENVIRONMENT_NAME = "Production"
-AWS_REGION = "us-west-2"
-APPCONFIG_AGENT_BASE_URL = 'http://localhost:2772'
-flag_key = 'discount_enabled'
+# Configuração lida de variáveis de ambiente (injetadas pelo deployment ECS/EKS).
+# Os valores default facilitam o teste local, mas em produção use os IDs reais
+# criados pela stack de AppConfig (ver template.yaml).
+APPCONFIG_APPLICATION_NAME = os.environ.get("APPCONFIG_APP_ID", "MyPythonApp")
+APPCONFIG_CONFIG_PROFILE_NAME = os.environ.get("APPCONFIG_CONFIG_ID", "FeatureFlags")
+APPCONFIG_ENVIRONMENT_NAME = os.environ.get("APPCONFIG_ENV_ID", "Production")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-west-2")
+APPCONFIG_AGENT_BASE_URL = os.environ.get("APPCONFIG_AGENT_BASE_URL", "http://localhost:2772")
+DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "Products")
+flag_key = "discount_enabled"
 
 # Cache variables
 cached_config_data = None
@@ -82,7 +86,7 @@ def get_products():
     logger.info("Iniciando busca de produtos no DynamoDB")
     try:
         dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
-        table = dynamodb.Table('Products')
+        table = dynamodb.Table(DYNAMODB_TABLE_NAME)
         
         logger.info("Executando scan na tabela Products")
         response = table.scan()
@@ -111,40 +115,52 @@ def apply_discount(products, discount_percentage):
         
     return products
 
+# Valor padrão usado quando a configuração não pode ser recuperada (fallback).
+DEFAULT_DISCOUNT_FEATURE = {"enabled": False, "discount_percentage": 0}
+
+
+def get_discount_feature():
+    """Retorna a feature flag de desconto, com fallback seguro em caso de erro."""
+    try:
+        config = get_config() or {}
+    except Exception as e:
+        logger.error(f"Falha ao obter configuração, usando fallback: {e}")
+        return dict(DEFAULT_DISCOUNT_FEATURE)
+    return config.get("discount_enabled", DEFAULT_DISCOUNT_FEATURE)
+
+
 @app.route('/api/products')
 def get_product_list():
-    config = get_config()
-    discount_feature = config["discount_enabled"]
+    discount_feature = get_discount_feature()
 
     if discount_feature["enabled"]:
         discount_percentage = discount_feature["discount_percentage"]
     else:
-       discount_percentage = 0 
+       discount_percentage = 0
 
     # Busca produtos no DynamoDB
     products = get_products()
     
     # Aplica desconto se a feature estiver habilitada
-    if discount_feature and discount_percentage > 0:
+    if discount_feature["enabled"] and discount_percentage > 0:
         products = apply_discount(products, discount_percentage)
-    
+
     response = {
         'products': products,
-        'promotion_active': discount_feature,
-        'discount_percentage': discount_percentage if discount_feature else 0
+        'promotion_active': discount_feature["enabled"],
+        'discount_percentage': discount_percentage
     }
     
     return json.dumps(response, default=decimal_default), 200, {'Content-Type': 'application/json'}
 
 @app.route('/api/status')
 def status():
-    config = get_config()
-    discount_feature = config["discount_enabled"]
-    
+    discount_feature = get_discount_feature()
+
     return jsonify({
         'service': 'backend',
         'status': 'operational',
-        'discount_feature': config["discount_enabled"],
+        'discount_feature': discount_feature,
         'discount_percentage': discount_feature["discount_percentage"] if discount_feature["enabled"] else 0
     })
 

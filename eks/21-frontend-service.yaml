@@ -1,0 +1,24 @@
+# Expõe o frontend publicamente via Network Load Balancer.
+# Requer o AWS Load Balancer Controller instalado no cluster.
+# Após aplicar, obtenha o hostname com:
+#   kubectl get svc frontend-service -n backend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: backend
+  labels:
+    app: frontend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP

@@ -1,0 +1,64 @@
+{
+  "family": "backend",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/appconfig-feature-toggle-AppConfigAgentRole",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/backend:latest",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 5000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "APPCONFIG_APP_ID", "value": "MyPythonApp" },
+        { "name": "APPCONFIG_ENV_ID", "value": "Production" },
+        { "name": "APPCONFIG_CONFIG_ID", "value": "FeatureFlags" },
+        { "name": "AWS_DEFAULT_REGION", "value": "us-west-2" },
+        { "name": "DYNAMODB_TABLE_NAME", "value": "Products" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:5000/api/status')\" || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/backend",
+          "awslogs-region": "us-west-2",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "dependsOn": [
+        { "containerName": "appconfig-agent", "condition": "START" }
+      ]
+    },
+    {
+      "name": "appconfig-agent",
+      "image": "public.ecr.aws/aws-appconfig/aws-appconfig-agent:2.x",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 2772, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "SERVICE_REGION", "value": "us-west-2" },
+        { "name": "POLL_INTERVAL", "value": "30" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/backend",
+          "awslogs-region": "us-west-2",
+          "awslogs-stream-prefix": "appconfig-agent"
+        }
+      }
+    }
+  ]
+}
