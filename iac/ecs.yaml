@@ -200,6 +200,16 @@ Resources:
             - { Name: APPCONFIG_CONFIG_ID, Value: !Ref AppConfigConfigId }
             - { Name: AWS_DEFAULT_REGION, Value: !Ref AwsRegion }
             - { Name: DYNAMODB_TABLE_NAME, Value: !Ref ProductsTableName }
+          # Health check via Python (a imagem slim não traz curl): confirma que o
+          # app Flask responde em /api/status antes de ECS considerar a task saudável.
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - python -c "import urllib.request;urllib.request.urlopen('http://localhost:5000/api/status')" || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
           DependsOn:
             - { ContainerName: appconfig-agent, Condition: START }
           LogConfiguration:
@@ -216,6 +226,9 @@ Resources:
               Protocol: tcp
           Environment:
             - { Name: SERVICE_REGION, Value: !Ref AwsRegion }
+            # Intervalo de polling do agent (default 45s). 30s acelera a propagação
+            # de mudanças de flag — alinhado ao blog e aos task defs de ecs/.
+            - { Name: POLL_INTERVAL, Value: "30" }
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -249,6 +262,16 @@ Resources:
             - { Name: APPCONFIG_DEPLOY_STRATEGY_ID, Value: !Ref AppConfigDeployStrategyId }
             # Resolvido via Service Connect (backend:5000 no namespace do cluster)
             - { Name: BACKEND_URL, Value: "http://backend:5000" }
+          # Health check via Python (a imagem slim não traz curl): confirma que o
+          # catálogo responde em / antes de ECS considerar a task saudável.
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - python -c "import urllib.request;urllib.request.urlopen('http://localhost:80/')" || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
           DependsOn:
             - { ContainerName: appconfig-agent, Condition: START }
           LogConfiguration:
@@ -265,6 +288,9 @@ Resources:
               Protocol: tcp
           Environment:
             - { Name: SERVICE_REGION, Value: !Ref AwsRegion }
+            # Intervalo de polling do agent (default 45s). 30s acelera a propagação
+            # de mudanças de flag — alinhado ao blog e aos task defs de ecs/.
+            - { Name: POLL_INTERVAL, Value: "30" }
           LogConfiguration:
             LogDriver: awslogs
             Options:

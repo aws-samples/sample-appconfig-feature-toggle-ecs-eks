@@ -12,3 +12,8 @@ env/
 # Env / secrets
 .env
 *.local
+
+# Local artifacts / source drafts (not part of the sample)
+.versions/
+*.docx
+~$*
