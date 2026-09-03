@@ -17,3 +17,6 @@ env/
 .versions/
 *.docx
 ~$*
+
+# Blog drafts (kept outside the sample repo)
+AWS_AppConfig_Feature_Toggle_Blog*.md
