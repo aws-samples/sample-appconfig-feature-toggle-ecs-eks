@@ -33,7 +33,22 @@ A complete, deployable reference project that adds **runtime feature toggles** t
 
 ## Demonstration only
 
-> ⚠️ This project is a **demonstration**. The Application Load Balancer uses a plain **HTTP** listener for simplicity, IAM roles are scoped to this demo's resources, and services run with public IPs in the default VPC. Add an ACM certificate (HTTPS), private subnets, and tighter scoping before adapting any of this for production.
+> ⚠️ This project is a **demonstration / learning sample**. It is intentionally
+> simplified so readers can follow along and reproduce the setup. Specifically:
+>
+> - The **`/admin` portal** and **`/debug` endpoint** have **no authentication** —
+>   they are open so you can toggle the feature flag and inspect configuration
+>   without additional setup. **In a production environment**, protect these
+>   endpoints with an authentication mechanism such as
+>   [Amazon Cognito](https://docs.aws.amazon.com/cognito/),
+>   [ALB authentication](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html),
+>   or application-level auth middleware — or remove `/debug` entirely.
+> - The Application Load Balancer uses a plain **HTTP** listener. Add an
+>   [ACM certificate](https://docs.aws.amazon.com/acm/) for HTTPS in production.
+> - IAM roles are scoped to this demo's resources, and services run with public
+>   IPs in the default VPC. Use private subnets and tighter scoping in production.
+> - Containers run as root for simplicity. Add a non-root `USER` directive in
+>   Dockerfiles and `securityContext` in Kubernetes manifests for production.
 
 ## The problem it solves
 
@@ -239,6 +254,7 @@ curl -s -X POST "$URL/admin" --data-urlencode "enabled=on" --data-urlencode "dis
 ## Security considerations
 
 - **No hardcoded credentials** — everything via environment variables and task role / IRSA.
+- **`/admin` and `/debug` are unauthenticated** — these endpoints exist solely to make the demo interactive and inspectable. In a production system, protect `/admin` with an auth layer (Cognito, ALB OIDC, or application middleware) and remove or restrict `/debug` entirely.
 - **Least-privilege IAM** — the agent role is scoped to this specific AppConfig application and the `Products` table.
 - **Public base images** — Dockerfiles pull from `public.ecr.aws`, not Docker Hub.
 - **DynamoDB** — SSE (AWS-managed keys) and point-in-time recovery enabled.

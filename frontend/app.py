@@ -118,7 +118,15 @@ def index():
 
 @app.route('/debug')
 def debug():
-    """Página de debug para visualizar configurações e status"""
+    """
+    ⚠️ DEMONSTRATION ONLY — This route has no authentication and exposes
+    internal configuration details (AppConfig IDs, backend URL, raw agent
+    payload). It exists so readers can inspect the sidecar integration
+    while following the blog post.
+
+    In a non-demonstration environment, remove this endpoint entirely or
+    restrict access to an internal network / authenticated users.
+    """
     logger.info("Requisição para página de debug recebida")
     
     debug_info = {
@@ -212,7 +220,16 @@ def set_flag(enabled, discount_percentage):
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    """Portal simples para ligar/desligar a promoção."""
+    """
+    ⚠️ DEMONSTRATION ONLY — This admin portal has no authentication.
+    It is intentionally open so readers can toggle the feature flag and
+    observe the real-time propagation through the AppConfig Agent sidecar
+    without additional setup.
+
+    In a production environment, protect this endpoint with an
+    authentication/authorization layer (e.g., Amazon Cognito + ALB OIDC,
+    API Gateway authorizer, or application-level middleware).
+    """
     if request.method == 'POST':
         enabled = request.form.get('enabled') == 'on'
         try:
