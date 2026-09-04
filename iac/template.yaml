@@ -12,7 +12,7 @@ Parameters:
     Description: Nome da AppConfig Application (usado como APPCONFIG_APP_ID).
   EnvironmentName:
     Type: String
-    Default: Production
+    Default: Demo
     Description: Nome do AppConfig Environment (usado como APPCONFIG_ENV_ID).
   ConfigProfileName:
     Type: String
@@ -36,7 +36,7 @@ Resources:
     Properties:
       ApplicationId: !Ref AppConfigApplication
       Name: !Ref EnvironmentName
-      Description: Production environment
+      Description: Demo environment
 
   AppConfigConfigProfile:
     Type: AWS::AppConfig::ConfigurationProfile

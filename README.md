@@ -70,7 +70,7 @@ Feature flags decouple **behavior changes** from **deployments**. This project u
 
 ## Architecture
 
-![Architecture diagram](Arquitetura.png)
+![Architecture diagram](Architecture.png)
 
 ```mermaid
 flowchart LR

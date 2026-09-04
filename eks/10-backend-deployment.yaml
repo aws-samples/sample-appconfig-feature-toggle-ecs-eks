@@ -33,7 +33,7 @@ spec:
         - name: APPCONFIG_APP_ID
           value: "MyPythonApp"
         - name: APPCONFIG_ENV_ID
-          value: "Production"
+          value: "Demo"
         - name: APPCONFIG_CONFIG_ID
           value: "FeatureFlags"
         - name: AWS_DEFAULT_REGION

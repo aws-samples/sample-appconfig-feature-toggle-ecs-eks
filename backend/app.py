@@ -5,7 +5,6 @@ import os
 import logging
 from flask_cors import CORS
 from decimal import Decimal
-from datetime import datetime, timedelta
 import requests
 
 
@@ -23,16 +22,11 @@ logger = logging.getLogger()
 # criados pela stack de AppConfig (ver template.yaml).
 APPCONFIG_APPLICATION_NAME = os.environ.get("APPCONFIG_APP_ID", "MyPythonApp")
 APPCONFIG_CONFIG_PROFILE_NAME = os.environ.get("APPCONFIG_CONFIG_ID", "FeatureFlags")
-APPCONFIG_ENVIRONMENT_NAME = os.environ.get("APPCONFIG_ENV_ID", "Production")
+APPCONFIG_ENVIRONMENT_NAME = os.environ.get("APPCONFIG_ENV_ID", "Demo")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-west-2")
 APPCONFIG_AGENT_BASE_URL = os.environ.get("APPCONFIG_AGENT_BASE_URL", "http://localhost:2772")
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "Products")
 flag_key = "discount_enabled"
-
-# Cache variables
-cached_config_data = None
-cached_last_update = None
-cache_ttl = timedelta(minutes=1)  # Define um TTL de 1 minutos para o cache
 
 # Função auxiliar para converter do formato Decimal do DynamoDB para float
 def decimal_default(obj):
@@ -42,44 +36,26 @@ def decimal_default(obj):
 
 
 def get_config(flag_key=None):
-    global cached_config_data
-    global cached_last_update
+    """Lê a configuração diretamente do AppConfig Agent local.
 
-    # Verifica se o cache é válido
-    if cached_config_data and cached_last_update:
-        if datetime.now() - cached_last_update < cache_ttl:
-            return cached_config_data
+    Sem cache em nível de aplicação: o próprio agent sidecar já mantém um cache
+    local e faz o polling do AppConfig, e as respostas via localhost retornam em
+    micro/milissegundos. Consultar o agent a cada request entrega sempre o valor
+    mais fresco e evita bugs de lógica de cache no código da aplicação.
+    A degradação graciosa (fallback seguro) fica em get_discount_feature().
+    """
+    # Constrói a URL base
+    url = f"{APPCONFIG_AGENT_BASE_URL}/applications/{APPCONFIG_APPLICATION_NAME}/environments/{APPCONFIG_ENVIRONMENT_NAME}/configurations/{APPCONFIG_CONFIG_PROFILE_NAME}"
 
-    try:
-        # Constrói a URL base
-        url = f"{APPCONFIG_AGENT_BASE_URL}/applications/{APPCONFIG_APPLICATION_NAME}/environments/{APPCONFIG_ENVIRONMENT_NAME}/configurations/{APPCONFIG_CONFIG_PROFILE_NAME}"
+    # Adiciona o parâmetro flag se especificado
+    if flag_key:
+        url += f"?flag={flag_key}"
 
-        # Adiciona o parâmetro flag se especificado
-        if flag_key:
-            url += f"?flag={flag_key}"
+    # Faz a requisição para o AppConfig Agent (timeout curto: é uma chamada local)
+    response = requests.get(url, timeout=5)
+    response.raise_for_status()  # Levanta exceção para status codes de erro
 
-        # Faz a requisição para o AppConfig Agent
-        response = requests.get(url)
-        response.raise_for_status()  # Levanta exceção para status codes de erro
-
-        # Decodifica o conteúdo da resposta
-        content = response.content
-        if content:
-            try:
-                cached_config_data = json.loads(content.decode('utf-8'))
-                cached_last_update = datetime.now()
-                print("Received new config data:", cached_config_data)
-            except json.JSONDecodeError as error:
-                raise ValueError(f"Error decoding JSON: {error}")
-        
-        return cached_config_data
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching configuration: {e}")
-        # Retorna o cache existente em caso de erro, mesmo que expirado
-        if cached_config_data:
-            return cached_config_data
-        raise
+    return json.loads(response.content.decode('utf-8'))
 
 def get_products():
     """Consulta todos os produtos no DynamoDB"""

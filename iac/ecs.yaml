@@ -347,4 +347,7 @@ Resources:
 Outputs:
   FrontendUrl:
     Description: URL pública do frontend
-    Value: !Sub "http://${LoadBalancer.DNSName}"
+    Value: !If
+      - HasCertificate
+      - !Sub "https://${LoadBalancer.DNSName}"
+      - !Sub "http://${LoadBalancer.DNSName}"
